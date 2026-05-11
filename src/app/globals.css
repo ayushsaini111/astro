@@ -1,26 +1,153 @@
 @import "tailwindcss";
 
+/* 🌍 Global Design Tokens */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+    --primary-main: #341539;
+    --primary-light: #792e85;
+    --secondary-main: #f5e3d7;
+    --secondary-dark: #e6a459;
+    --accent-main: #804012;
+    --red-main: #c03737;
+    --red-dark: #6C2E2E;
+
+    --text-main: #070402;
+    --text-secondary: #5E5E5E;
+
+    --background: #FFF1E7;
+    --foreground: #070402;
+
+    --font-primary: "Lora", serif;
+    --font-secondary: "DM Sans", sans-serif;
+
+    --S6: 6px;
+    --S8: 8px;
+    --S16: 16px;
+    --S24: 24px;
+    --S32: 32px;
+    --S40: 40px;
+    --S48: 48px;
+    --S56: 56px;
+    --S64: 64px;
+
+    --R8: 8px;
+    --R16: 16px;
+    --R24: 24px;
+    --R32: 32px;
 }
 
+/* 🎨 Tailwind mapping */
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+    --color-primary-main: var(--primary-main);
+    --color-secondary-main: var(--secondary-main);
+    --color-main: var(--text-main);
+    --color-secondary: var(--text-secondary);
+    --color-background: var(--background);
+    --color-foreground: var(--foreground);
+
+    --font-primary: var(--font-primary);
+    --font-secondary: var(--font-secondary);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+/* Typography */
+.heading-h2 {
+    font-family: var(--font-primary);
+    @apply font-semibold;
+    font-size: clamp(2.2rem, 4vw, 3rem);
 }
 
+.body-default {
+    font-size: 1rem;
+    line-height: 1.6;
+}
+
+.caption {
+    font-size: 0.75rem;
+}
+
+/* Global */
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+    background: var(--background);
+    color: var(--foreground);
+    font-family: var(--font-secondary);
 }
+
+/* Reset */
+* {
+    user-select: none;
+}
+
+img {
+    pointer-events: none;
+}
+
+.hide-scrollbar::-webkit-scrollbar {
+    display: none;
+}
+
+.hide-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+}
+
+::-webkit-scrollbar {
+    display: none;
+}
+
+•⁠ {
+    user-select: none;
+    -webkit-user-select: none;
+    /* Safari */
+    -ms-user-select: none;
+    /* IE/Edge */
+}
+
+img {
+    -webkit-user-drag: none;
+    user-drag: none;
+    pointer-events: none;
+    /* optional: also prevents right-click */
+}
+
+@keyframes slideUp {
+    0% {
+        transform: translateY(100%);
+    }
+
+    100% {
+        transform: translateY(0);
+    }
+}
+
+.animate-slideUp {
+    animation: slideUp 0.45s ease-out;
+}
+
+.safari-only { display: none; }
+ 
+
+.hero-video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+
+  background: transparent !important;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+
+
+/* Safari video black background override */
+video {
+  background: transparent !important;
+}
+
+
+
+@supports (-webkit-touch-callout: none) {
+  .webm { display: none; }
+  .safari-only { display: block; }
+}
+
+

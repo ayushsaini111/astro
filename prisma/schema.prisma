@@ -1,0 +1,399 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+///////////////////////
+// ENUMS
+///////////////////////
+
+enum CallStatus {
+  INITIATED
+  ONGOING
+  COMPLETED
+  FAILED
+  RINGING      
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCESS
+  FAILED
+}
+
+///////////////////////
+// USER
+///////////////////////
+
+model User {
+  id         String  @id @default(cuid())
+  username   String? @unique
+  email      String? @unique
+  phone      String? @unique
+  dob        DateTime?
+  profilePic String?
+  isVerified Boolean @default(false)
+  isBlocked  Boolean @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  deletedAt  DateTime?
+
+  wallet       Wallet?
+  sessions     Session[]
+  devices      Device[]
+  otpRequests  OTPVerification[]
+  transactions Transaction[]
+  orders       Order[]
+  calls        Call[]
+  plans        UserPlan[]
+}
+
+///////////////////////
+// DEVICE
+///////////////////////
+
+model Device {
+  id         String   @id @default(cuid())
+  userId     String
+  deviceId   String   @unique
+  platform   String
+  ip         String?
+  userAgent  String?
+  lastActive DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+}
+
+
+
+///////////////////////
+// SESSION
+///////////////////////
+
+model Session {
+  id        String   @id @default(cuid())
+  userId    String
+  token     String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+}
+
+///////////////////////
+// OTP
+///////////////////////
+
+model OTPVerification {
+  id         String   @id @default(cuid())
+  identifier String
+  otp        String
+  attempts   Int      @default(0)
+  expiresAt  DateTime
+  verified   Boolean  @default(false)
+
+  createdAt DateTime @default(now())
+  user      User?    @relation(fields: [userId], references: [id])
+  userId    String?
+
+  @@index([identifier])
+}
+
+///////////////////////
+// WALLET
+///////////////////////
+
+model Wallet {
+  id      String @id @default(cuid())
+  userId  String @unique
+  balance Float  @default(0)
+
+  user         User          @relation(fields: [userId], references: [id])
+  transactions Transaction[]
+
+  updatedAt DateTime @updatedAt
+}
+
+///////////////////////
+// TRANSACTION
+///////////////////////
+
+model Transaction {
+  id       String  @id @default(cuid())
+  userId   String
+  walletId String?
+
+  amount  Float
+  type    String // CREDIT / DEBIT
+  purpose String // CALL / ORDER / TOPUP
+
+  status PaymentStatus
+
+  razorpayOrderId   String?
+  razorpayPaymentId String?
+
+  idempotencyKey String? @unique
+
+  createdAt DateTime @default(now())
+
+  user         User          @relation(fields: [userId], references: [id])
+  wallet       Wallet?       @relation(fields: [walletId], references: [id])
+  callBillings CallBilling[]
+}
+
+///////////////////////
+// PAYMENT LOG (WEBHOOK DEBUG)
+///////////////////////
+
+model PaymentLog {
+  id        String   @id @default(cuid())
+  event     String
+  payload   Json
+  createdAt DateTime @default(now())
+}
+
+///////////////////////
+// CALL SYSTEM
+///////////////////////
+
+model Call {
+  id String @id @default(cuid())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
+
+  channelName String
+  agoraToken  String?
+
+  type String // VOICE / VIDEO
+
+  ratePerMinute Float
+  billingType   String // WALLET / PLAN
+
+  status CallStatus @default(INITIATED)
+
+  startTime DateTime?
+  endTime   DateTime?
+
+  duration        Int?
+  billableSeconds Int?
+  totalCost       Float?
+
+  autoEnded Boolean @default(false)
+  endedBy   String?
+
+  createdAt DateTime @default(now())
+ panditId  String        // ADD THIS
+  pandit    Pandit        @relation(fields: [panditId], references: [id])  // ADD THIS
+  events          CallEvent[]
+  billing         CallBilling?
+  liveState       CallLiveState? @relation(fields: [callLiveStateId], references: [id])
+  callLiveStateId String?
+}
+
+model Pandit {
+  id          String   @id @default(cuid())
+  name        String
+  email       String   @unique
+  speciality  String
+  ratePerMin  Float    @default(0)
+  profilePic  String?
+  isAvailable Boolean  @default(true)
+  calls       Call[]
+  createdAt   DateTime @default(now())
+}
+
+///////////////////////
+// CALL EVENTS
+///////////////////////
+
+model CallEvent {
+  id String @id @default(cuid())
+
+  callId String
+  call   Call   @relation(fields: [callId], references: [id])
+
+  type      String
+  metadata  Json?
+  createdAt DateTime @default(now())
+
+  @@index([callId])
+}
+
+///////////////////////
+// CALL BILLING
+///////////////////////
+
+model CallBilling {
+  id String @id @default(cuid())
+
+  callId String @unique
+  call   Call   @relation(fields: [callId], references: [id])
+
+  totalDuration   Int
+  chargedDuration Int
+  totalCost       Float
+
+  walletDeducted  Float @default(0)
+  planUsedMinutes Int   @default(0)
+
+  transactionId String?
+  transaction   Transaction? @relation(fields: [transactionId], references: [id])
+
+  createdAt DateTime @default(now())
+}
+
+///////////////////////
+// LIVE STATE (REAL-TIME)
+///////////////////////
+
+model CallLiveState {
+  id     String @id @default(cuid())
+  callId String @unique
+
+  currentCost Float @default(0)
+  elapsedSec  Int   @default(0)
+
+  lastSynced DateTime @default(now())
+  calls      Call[]
+}
+
+///////////////////////
+// ALERTS
+///////////////////////
+
+model CallAlert {
+  id        String   @id @default(cuid())
+  callId    String
+  type      String
+  createdAt DateTime @default(now())
+}
+
+///////////////////////
+// PLANS
+///////////////////////
+
+model Plan {
+  id      String @id @default(cuid())
+  name    String
+  price   Float
+  minutes Int
+
+  users UserPlan[]
+}
+
+model UserPlan {
+  id     String @id @default(cuid())
+  userId String
+  planId String
+
+  startDate        DateTime
+  endDate          DateTime
+  remainingMinutes Int
+
+  user User @relation(fields: [userId], references: [id])
+  plan Plan @relation(fields: [planId], references: [id])
+}
+
+///////////////////////
+// PRODUCTS
+///////////////////////
+
+model Product {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  price       Float
+  stock       Int
+  images      String[]
+
+  isActive Boolean @default(true)
+
+  createdAt DateTime @default(now())
+}
+
+///////////////////////
+// ORDERS
+///////////////////////
+
+model Order {
+  id     String @id @default(cuid())
+  userId String
+
+  totalAmount Float
+  status      String
+  address     String
+
+  paymentId String?
+
+  user  User        @relation(fields: [userId], references: [id])
+  items OrderItem[]
+
+  createdAt DateTime @default(now())
+}
+
+model OrderItem {
+  id        String @id @default(cuid())
+  orderId   String
+  productId String
+
+  quantity Int
+  price    Float
+
+  order Order @relation(fields: [orderId], references: [id])
+}
+
+///////////////////////
+// DELIVERY
+///////////////////////
+
+model DeliveryPartner {
+  id          String @id @default(cuid())
+  name        String
+  phone       String
+  vehicleType String
+
+  isAvailable Boolean    @default(true)
+  deliveries  Delivery[]
+}
+
+model Delivery {
+  id        String @id @default(cuid())
+  orderId   String
+  partnerId String
+
+  status String
+
+  assignedAt  DateTime  @default(now())
+  deliveredAt DateTime?
+
+  partner DeliveryPartner @relation(fields: [partnerId], references: [id])
+}
+
+///////////////////////
+// FEATURE FLAGS
+///////////////////////
+
+model FeatureFlag {
+  id      String  @id @default(cuid())
+  key     String  @unique
+  enabled Boolean @default(false)
+}
+
+///////////////////////
+// AUDIT LOG
+///////////////////////
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  action    String
+  metadata  Json?
+  createdAt DateTime @default(now())
+}
