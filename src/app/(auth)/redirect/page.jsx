@@ -16,5 +16,5 @@ export default async function AuthRedirectPage() {
     redirect("/username");
   }
 
-  redirect("/home");
+  redirect("/");
 }

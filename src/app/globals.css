@@ -28,40 +28,152 @@
     --S48: 48px;
     --S56: 56px;
     --S64: 64px;
+    --S80: 80px;
+    --S104: 104px;
+    --S160: 160px;
 
     --R8: 8px;
     --R16: 16px;
     --R24: 24px;
     --R32: 32px;
+    --R40: 40px;
+    
 }
 
 /* 🎨 Tailwind mapping */
 @theme inline {
+  /* Primary */
     --color-primary-main: var(--primary-main);
+    --color-primary-light: var(--primary-light);
+
+    /* Secondary */
     --color-secondary-main: var(--secondary-main);
+    --color-secondary-dark: var(--secondary-dark);
+
+    /* Accent */
+    --color-accent-main: var(--accent-main);
+
+    /* Red */
+    --color-red-main: var(--red-main);
+    --color-red-dark: var(--red-dark);
+
+    /* Text */
     --color-main: var(--text-main);
     --color-secondary: var(--text-secondary);
+
+    /* Base */
     --color-background: var(--background);
     --color-foreground: var(--foreground);
 
-    --font-primary: var(--font-primary);
-    --font-secondary: var(--font-secondary);
+    /* Spacing */
+--spacing-s6: var(--S6);
+--spacing-s8: var(--S8);
+--spacing-s16: var(--S16);
+--spacing-s24: var(--S24);
+--spacing-s32: var(--S32);
+--spacing-s40: var(--S40);
+--spacing-s48: var(--S48);
+--spacing-s56: var(--S56);
+--spacing-s64: var(--S64);
+--spacing-s80: var(--S80);
+--spacing-s104: var(--S104);
+--spacing-s160: var(--S160);
+
+/* Radius */
+--radius-r8: var(--R8);
+--radius-r16: var(--R16);
+--radius-r24: var(--R24);
+--radius-r32: var(--R32);
+--radius-r40: var(--R40);
+
 }
 
-/* Typography */
+/* =========================
+   Typography System
+========================= */
+
+/* H1 */
+.heading-h1 {
+    font-family: var(--font-primary);
+    @apply font-bold;
+    font-size: clamp(3rem, 6vw, 5rem);
+    line-height: 1.1;
+}
+
+/* H2 */
 .heading-h2 {
     font-family: var(--font-primary);
     @apply font-semibold;
     font-size: clamp(2.2rem, 4vw, 3rem);
+    line-height: 1.15;
+}
+
+/* H3 */
+.heading-h3 {
+    font-family: var(--font-primary);
+    @apply font-semibold;
+    font-size: clamp(1.8rem, 3vw, 2.4rem);
+    line-height: 1.2;
+}
+
+/* H4 */
+.heading-h4 {
+    font-family: var(--font-primary);
+    @apply font-medium;
+    font-size: clamp(1.5rem, 2vw, 2rem);
+    line-height: 1.3;
+}
+
+/* H5 */
+.heading-h5 {
+    font-family: var(--font-primary);
+    @apply font-medium;
+    font-size: clamp(1.2rem, 1.5vw, 1.5rem);
+    line-height: 1.35;
+}
+
+/* H6 */
+.heading-h6 {
+    font-family: var(--font-primary);
+    @apply font-medium;
+    font-size: clamp(1rem, 1vw, 1.2rem);
+    line-height: 1.4;
+}
+
+/* =========================
+   Body Text
+========================= */
+
+.body-large {
+    font-family: var(--font-secondary);
+    @apply font-normal;
+    font-size: 1.125rem;
+    line-height: 1.8;
 }
 
 .body-default {
+    font-family: var(--font-secondary);
+    @apply font-normal;
     font-size: 1rem;
     line-height: 1.6;
 }
 
+.body-small {
+    font-family: var(--font-secondary);
+    @apply font-normal;
+    font-size: 0.875rem;
+    line-height: 1.5;
+}
+
+/* =========================
+   Caption
+========================= */
+
 .caption {
+    font-family: var(--font-secondary);
+    @apply font-normal;
     font-size: 0.75rem;
+    line-height: 1.4;
 }
 
 /* Global */
