@@ -1,7 +1,7 @@
 import React from "react";
 
 import { remedies } from "@/data/remedies";
-
+//erewrew
 import RemedyDetailsPageContent from "@/components/remedies/subremedy/RemedyDetailsPageContent";
 
 export default async function RemedyPage({
@@ -16,7 +16,7 @@ export default async function RemedyPage({
   if (!remedy) {
     return (
       <div>
-        Remedy not found
+        Remedy not found.
       </div>
     );
   }
