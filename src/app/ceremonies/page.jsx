@@ -2,7 +2,7 @@ import React from "react";
 
 import PageHeader from "@/components/PageHeader";
 import Recommendation from "@/components/Ceremonies/Recommendation";
-import CeremonyHeroSection from "@/components/ceremonies/CeremonyHeroSection";
+import CeremonyHeroSection from "@/components/Ceremonies/CeremonyHeroSection";
 import HassleFreeSection from "@/components/Ceremonies/HassleFreeSection";
 import CustomArrangementSection from "@/components/Ceremonies/CustomArrangementSection";
 import GuidanceSection from "@/components/Ceremonies/GuidanceSection";
