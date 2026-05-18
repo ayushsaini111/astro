@@ -1,6 +1,12 @@
 import React from "react";
 import Button from "@/components/ui/Button";
 
+import {
+  ShieldCheck,
+  Headphones,
+  Lock,
+} from "lucide-react";
+
 const tags = [
   "Career Clarity",
   "Stress & Anxiety",
@@ -13,19 +19,19 @@ const features = [
     id: 1,
     title: "Verified Experts",
     subtitle: "Trusted & experienced",
-    icon: "🛡️",
+    icon: ShieldCheck,
   },
   {
     id: 2,
     title: "Private & Secure",
     subtitle: "100% confidential",
-    icon: "🎧",
+    icon: Headphones,
   },
   {
     id: 3,
     title: "Instant Connection",
     subtitle: "Talk in minutes",
-    icon: "🔒",
+    icon: Lock,
   },
 ];
 
@@ -125,66 +131,71 @@ function ConsultBottomSection() {
         "
       >
 
-        {features.map((item) => (
-          <div
-            key={item.id}
-            className="
-             
-              rounded-r24
-              p-s6
-              flex
-              gap-[3px]
-              items-center
-              
-              
-            "
-          >
+        {features.map((item) => {
+          const Icon = item.icon;
 
-            {/* Icon */}
+          return (
             <div
+              key={item.id}
               className="
-                w-s32
-                h-s32
-                rounded-full
-                border
-                border-secondary
+                rounded-r24
+                p-s6
                 flex
+                gap-[3px]
                 items-center
-                justify-center
-                flex-shrink-0
               "
             >
-              {item.icon}
-            </div>
 
-            {/* Content */}
-            <div className="flex flex-col gap-[2px]">
-
-              <h4
+              {/* Icon */}
+              <div
                 className="
-                  text-[8px]
-                  text-main
-                  font-medium
-                  leading-tight
+                  w-s32
+                  h-s32
+                  rounded-full
+                  border
+                  border-secondary
+                  flex
+                  items-center
+                  justify-center
+                  flex-shrink-0
                 "
               >
-                {item.title}
-              </h4>
+                <Icon
+                  size={16}
+                  
+                  className="text-main"
+                />
+              </div>
 
-              <p
-                className="
-                  text-[6px]
-                  text-secondary
-                  leading-tight
-                "
-              >
-                {item.subtitle}
-              </p>
+              {/* Content */}
+              <div className="flex flex-col gap-[2px]">
+
+                <h4
+                  className="
+                    text-[8px]
+                    text-main
+                    font-medium
+                    leading-tight
+                  "
+                >
+                  {item.title}
+                </h4>
+
+                <p
+                  className="
+                    text-[6px]
+                    text-secondary
+                    leading-tight
+                  "
+                >
+                  {item.subtitle}
+                </p>
+
+              </div>
 
             </div>
-
-          </div>
-        ))}
+          );
+        })}
 
       </div>
 

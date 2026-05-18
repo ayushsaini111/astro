@@ -28,35 +28,104 @@ export default function MobileBottomNav() {
   const links = isPandit ? panditLinks : userLinks;
 
   return (
-    <nav className="fixed bottom-2 rounded-r40 left-0 w-full bg-white py-s6  border-t border-black/10 z-50 lg:hidden">
-      <div className="flex justify-around items-center py-3">
-        {links.map((link) => {
-          const isActive = pathname === link.href;
-          return (
-            <Link
-              key={link.href}
-              href={link.href}
-              className={`flex flex-col items-center text-xs gap-0.5 transition-all ${
-                isActive ? "text-primary-main font-semibold" : "text-secondary"
-              }`}
-            >
-              <Image
-                src={link.icon}
-                alt={link.label}
-                width={24}
-                height={24}
-                className={`transition-all ${
-                  isActive ? "opacity-100" : "opacity-40"
-                }`}
-              />
-              {link.label}
-              {isActive && (
-                <div className="w-1 h-1 rounded-full bg-primary-main mt-0.5" />
-              )}
-            </Link>
-          );
-        })}
-      </div>
-    </nav>
+   <nav
+  className="
+    fixed
+    bottom-s16
+    left-1/2
+    -translate-x-1/2
+
+    w-[calc(100%-32px)]
+    max-w-md
+
+    bg-white
+    rounded-r40
+    border
+    border-black/5
+
+    z-50
+    lg:hidden
+
+    shadow-[0_10px_40px_rgba(0,0,0,0.08)]
+    backdrop-blur-xl
+  "
+>
+
+  <div
+    className="
+      flex
+      items-center
+      justify-around
+      py-s16
+      px-s16
+    "
+  >
+
+    {links.map((link) => {
+
+      const isActive =
+        pathname === link.href;
+
+      return (
+        <Link
+          key={link.href}
+          href={link.href}
+          className="
+            flex
+            flex-col
+            items-center
+            justify-center
+            gap-s6
+            min-w-[52px]
+          "
+        >
+
+          {/* Icon */}
+          <div
+            className={`
+              transition-all
+              duration-300
+
+              ${
+                isActive
+                  ? "scale-105"
+                  : "opacity-70"
+              }
+            `}
+          >
+
+            <Image
+              src={link.icon}
+              alt={link.label}
+              width={26}
+              height={26}
+            />
+
+          </div>
+
+          {/* Label */}
+          <span
+            className={`
+              text-xs
+              transition-all
+              duration-300
+
+              ${
+                isActive
+                  ? "text-primary-main font-medium"
+                  : "text-secondary"
+              }
+            `}
+          >
+            {link.label}
+          </span>
+
+        </Link>
+      );
+    })}
+
+  </div>
+
+</nav>
   );
 }

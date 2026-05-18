@@ -25,7 +25,7 @@ function CallExpertsSection({ pandits = [], requestedCalls = {}, loadingId, onRe
       {/* Header */}
       <div className="flex items-center justify-between">
         <h2 className="heading-h5 text-main">Recommended Experts</h2>
-        <button className="caption text-primary-light hover:opacity-80 transition-all">
+        <button onClick={() => router.push("/pandits")} className="caption text-primary-light hover:opacity-80 transition-all">
           View All
         </button>
       </div>

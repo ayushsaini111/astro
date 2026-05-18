@@ -2,18 +2,19 @@
   "name": "astro",
   "version": "0.1.0",
   "private": true,
-"scripts": {
-  "dev": "next dev",
-"build": "prisma generate && next build",
-  "start": "next start",
-  "lint": "eslint"
-},
+  "scripts": {
+    "dev": "next dev",
+    "build": "prisma generate && next build",
+    "start": "next start",
+    "lint": "eslint"
+  },
   "dependencies": {
     "@prisma/adapter-pg": "^7.8.0",
     "@prisma/client": "^7.8.0",
     "agora-access-token": "^2.0.4",
     "agora-rtc-sdk-ng": "^4.24.3",
     "agora-token": "^2.0.5",
+    "lucide-react": "^1.16.0",
     "next": "16.2.6",
     "next-auth": "^4.24.14",
     "pg": "^8.20.0",

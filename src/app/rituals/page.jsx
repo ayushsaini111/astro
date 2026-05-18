@@ -30,21 +30,21 @@ export default function Page() {
               title: "Career Growth Pooja",
               description:
                 "Enhance focus, remove obstacles and attract new opportunities.",
-              image: "/rituals/ganeshji.jpg",
+              image: "/Rituals/ganeshji.jpg",
             },
             {
               id: 2,
               title: "Wealth Ritual",
               description:
                 "Attract abundance and positive energy.",
-              image: "/rituals/coconut2.jpg",
+              image: "/Rituals/coconut2.jpg",
             },
           ]}
         />
         <UpcomingLiveRituals
           rituals={[
             {
-              image: "/rituals/havan.jpg",
+              image: "/Rituals/havan.jpg",
               liveText: "Live",
               ritualTitle: "Maha Mrityunjaya Jaap",
               date: "19 July 2026",
@@ -62,17 +62,17 @@ export default function Page() {
         <RecentRitualExperiences
           rituals={[
             {
-              image: "/rituals/diya2.jpg",
+              image: "/Rituals/diya2.jpg",
               title: "Wealth Harmony Ritual",
               subtitle: "Completed last week",
             },
             {
-              image: "/rituals/diya.jpg",
+              image: "/Rituals/diya.jpg",
               title: "Career Success Pooja",
               subtitle: "Completed yesterday",
             },
             {
-              image: "/rituals/coconut.png",
+              image: "/Rituals/coconut.png",
               title: "Relationship Healing Ritual",
               subtitle: "Completed 2 days ago",
             },

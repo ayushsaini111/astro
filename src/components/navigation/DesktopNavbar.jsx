@@ -10,6 +10,7 @@ const userNavLinks = [
   { label: "Consult", href: "/consult" },
   { label: "Ceremonies", href: "/ceremonies" },
   { label: "Remedies", href: "/remedies" },
+  { label: "product", href: "/allproducts" },
 ];
 
 const panditNavLinks = [

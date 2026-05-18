@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import React from "react";
 import Image from "next/image";
 
-function RecommendationSection({
+function Recommendation({
   categoryTitle = "Category",
   sectionTitle = "Recommended for You",
   actionText = "View All",
@@ -16,46 +16,7 @@ function RecommendationSection({
   return (
     <section className="flex flex-col gap-s40">
 
-      {/* Categories */}
-      <div className="flex flex-col gap-s24 px-s16 lg:px-s40">
-
-        <h3 className="heading-h5 text-main">
-          {categoryTitle}
-        </h3>
-
-        <div
-          className="
-            flex
-            items-center
-            gap-s16
-            overflow-x-auto
-            hide-scrollbar
-          "
-        >
-
-          {categories.map((category) => (
-            <button
-              key={category}
-              className="
-                px-s16
-                py-s8
-                rounded-r16
-                bg-[#E8D8CC]
-                text-main
-                body-small
-                whitespace-nowrap
-                hover:bg-[#DDC9BB]
-                transition-all
-                duration-300
-              "
-            >
-              {category}
-            </button>
-          ))}
-
-        </div>
-
-      </div>
+    
 
       {/* Recommended */}
       <div className="flex flex-col gap-s32">
@@ -67,7 +28,7 @@ function RecommendationSection({
             items-center
             justify-between
             px-s16
-            lg:px-s40
+          
           "
         >
 
@@ -76,13 +37,15 @@ function RecommendationSection({
           </h3>
 
           <button
-              onClick={() => router.push("/ritualPackages")}
             className="
               body-small
               text-primary-light
               hover:opacity-80
               transition-all
             "
+             onClick={() =>
+    router.push("/ritualPackages")
+  }
           >
             {actionText}
           </button>
@@ -101,7 +64,7 @@ function RecommendationSection({
             lg:overflow-visible
             hide-scrollbar
             px-s16
-            lg:px-s40
+          
           "
         >
 
@@ -218,4 +181,4 @@ function RecommendationSection({
   );
 }
 
-export default RecommendationSection;
+export default Recommendation;

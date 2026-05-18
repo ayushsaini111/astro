@@ -20,6 +20,8 @@ function Button({
 
     secondary:
       "bg-secondary-dark text-white hover:opacity-90",
+    tertiary:
+      "bg-primary-light text-white hover:opacity-90",
 
     outline:
       "border border-primary-main text-primary-main hover:bg-primary-main hover:text-white",
