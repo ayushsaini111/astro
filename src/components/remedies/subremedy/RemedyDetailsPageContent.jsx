@@ -8,7 +8,7 @@ import RemedyQuoteCard from "./RemedyQuoteCard";
 
 import Recommendation from "@/components/Ceremonies/Recommendation";
 
-import ProductCard from "@/components/Products/ProductCard";
+import ProductCard from "@/components/products/ProductCard";
 
 import GuidanceSection from "@/components/Ceremonies/GuidanceSection";
 
