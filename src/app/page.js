@@ -173,7 +173,7 @@ export default function LandingPage() {
                     user?.role ===
                       "pandit"
                       ? "/pandit"
-                      : "/home"
+                      : "/consult"
                   )
                 }
                 className="
