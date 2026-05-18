@@ -2,7 +2,7 @@ import React from "react";
 
 import { remedies } from "@/data/remedies";
 
-import RemedyDetailsPageContent from "@/components/Remedies/subremedy/RemedyDetailsPageContent";
+import RemedyDetailsPageContent from "@/components/remedies/subremedy/RemedyDetailsPageContent";
 
 export default async function RemedyPage({
   params,
