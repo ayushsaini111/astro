@@ -92,7 +92,7 @@ function MobileSidebar({
         >
 
           {/* USER */}
-          <div className="flex items-center gap-s12">
+          <div className="flex items-center gap-s16">
 
             <div
               className="
@@ -226,7 +226,7 @@ function MobileSidebar({
             }
             label="Products"
             onClick={() =>
-              router.push("/products")
+              router.push("/allproducts")
             }
           />
 

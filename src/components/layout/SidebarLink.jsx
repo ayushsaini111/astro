@@ -19,7 +19,7 @@ function SidebarLink({
         gap-s16
 
         px-s16
-        py-s14
+        py-s16
 
         rounded-r24
 
