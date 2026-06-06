@@ -1,127 +1,258 @@
+// hooks/useAgora.js
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
+import AgoraRTC from "agora-rtc-sdk-ng";
 
 export function useAgora() {
-  const clientRef = useRef(null);
-  const localTrackRef = useRef(null);
   const [joined, setJoined] = useState(false);
   const [remoteJoined, setRemoteJoined] = useState(false);
+  const [remoteLeft, setRemoteLeft] = useState(false);
   const [muted, setMuted] = useState(false);
   const [ready, setReady] = useState(false);
   const [error, setError] = useState(null);
 
+  const clientRef = useRef(null);
+  const localTrackRef = useRef(null);
+
+  // =========================================================
+  // INIT CLIENT
+  // =========================================================
+
   useEffect(() => {
-    let mounted = true;
-    async function init() {
-      try {
-        const AgoraRTC = (await import("agora-rtc-sdk-ng")).default;
-        AgoraRTC.setLogLevel(2);
-        const client = AgoraRTC.createClient({ mode: "rtc", codec: "vp8" });
-        clientRef.current = client;
-        if (mounted) {
-          setReady(true);
-          console.log("✅ Agora ready");
-        }
-      } catch (e) {
-        console.error("❌ Init error:", e);
-        if (mounted) setError("Failed to init Agora");
-      }
+    if (!clientRef.current) {
+      clientRef.current = AgoraRTC.createClient({
+        mode: "rtc",
+        codec: "vp8",
+      });
     }
-    init();
-    return () => {
-      mounted = false;
-      clientRef.current?.removeAllListeners();
-      clientRef.current?.leave().catch(() => {});
-      localTrackRef.current?.stop();
-      localTrackRef.current?.close();
-    };
+
+    setReady(true);
   }, []);
 
-  async function joinCall({ appId, token, channelName, uid }) {
-    try {
-      const AgoraRTC = (await import("agora-rtc-sdk-ng")).default;
-      const client = clientRef.current;
-      if (!client) throw new Error("Client not ready");
+  // =========================================================
+  // JOIN CALL
+  // =========================================================
 
-      console.log("🔗 Joining:", channelName, uid);
+  const joinCall = useCallback(
+    async ({ appId, token, channelName, uid }) => {
+      try {
+        const client = clientRef.current;
 
-      // ✅ Set up listeners BEFORE joining so we don't miss events
-      client.removeAllListeners();
+        if (!client) {
+          throw new Error("Agora client not initialized");
+        }
 
-      client.on("user-published", async (user, mediaType) => {
-        console.log("📡 user-published:", user.uid, mediaType);
-        try {
+        // ✅ prevent duplicate listeners during fast refresh
+        client.removeAllListeners();
+
+        // =========================================================
+        // REMOTE USER PUBLISHED
+        // =========================================================
+
+        client.on("user-published", async (user, mediaType) => {
+          console.log(
+            "Remote user published:",
+            user.uid,
+            mediaType
+          );
+
           await client.subscribe(user, mediaType);
+
           if (mediaType === "audio") {
             user.audioTrack?.play();
-            setRemoteJoined(true);
-            console.log("🔊 Remote audio playing");
           }
-        } catch (err) {
-          console.error("Subscribe error:", err);
-        }
-      });
 
-      client.on("user-unpublished", (user) => {
-        user.audioTrack?.stop();
-      });
-
-      client.on("user-left", () => {
-        console.log("📵 Remote left");
-        setRemoteJoined(false);
-        setJoined(false);
-      });
-
-      // ✅ Join AFTER listeners are set
-      await client.join(appId, channelName, token, uid);
-      console.log("✅ Joined");
-
-      const audioTrack = await AgoraRTC.createMicrophoneAudioTrack();
-      await client.publish([audioTrack]);
-      localTrackRef.current = audioTrack;
-      setJoined(true);
-      console.log("🎙️ Published mic");
-
-      // ✅ Check if remote user already in channel (race condition fix)
-      const remoteUsers = client.remoteUsers;
-      console.log("👥 Remote users already in channel:", remoteUsers.length);
-      for (const user of remoteUsers) {
-        if (user.hasAudio) {
-          await client.subscribe(user, "audio");
-          user.audioTrack?.play();
+          // ✅ remote connected/reconnected
           setRemoteJoined(true);
-          console.log("🔊 Already-present remote audio playing");
-        }
+
+          // ✅ reset leave state
+          setRemoteLeft(false);
+        });
+
+        // =========================================================
+        // REMOTE USER LEFT
+        // =========================================================
+
+        client.on("user-left", (user, reason) => {
+          console.log(
+            "Remote user left:",
+            user.uid,
+            "reason:",
+            reason
+          );
+
+          setRemoteJoined(false);
+
+          // ✅ ONLY real leave
+          if (reason === "Quit") {
+            setRemoteLeft(true);
+          }
+
+          // ✅ temporary timeout
+          if (reason === "ServerTimeOut") {
+            console.log(
+              "Remote user timed out temporarily..."
+            );
+          }
+        });
+
+        // =========================================================
+        // REMOTE USER UNPUBLISHED
+        // =========================================================
+
+        client.on(
+          "user-unpublished",
+          (user, mediaType) => {
+            console.log(
+              "Remote user unpublished:",
+              user.uid,
+              mediaType
+            );
+          }
+        );
+
+        // =========================================================
+        // CONNECTION STATE
+        // =========================================================
+
+        client.on(
+          "connection-state-change",
+          (curState, prevState, reason) => {
+            console.log(
+              "Connection state:",
+              prevState,
+              "->",
+              curState,
+              "reason:",
+              reason
+            );
+
+            // ❌ DO NOT END CALL HERE
+            // temporary disconnects happen often
+
+            if (curState === "RECONNECTING") {
+              console.log("Reconnecting...");
+            }
+
+            if (curState === "CONNECTED") {
+              console.log("Reconnected successfully");
+            }
+          }
+        );
+
+        // =========================================================
+        // JOIN CHANNEL
+        // =========================================================
+
+        await client.join(
+          appId,
+          channelName,
+          token,
+          uid
+        );
+
+        // =========================================================
+        // CREATE LOCAL AUDIO TRACK
+        // =========================================================
+
+        const localAudioTrack =
+          await AgoraRTC.createMicrophoneAudioTrack();
+
+        localTrackRef.current = localAudioTrack;
+
+        await client.publish([localAudioTrack]);
+
+        setJoined(true);
+        setError(null);
+
+        console.log(
+          "Joined Agora channel:",
+          channelName
+        );
+      } catch (e) {
+        console.error("Join call error:", e);
+
+        setError(
+          e?.message || "Failed to join call"
+        );
+      }
+    },
+    []
+  );
+
+  // =========================================================
+  // LEAVE CALL
+  // =========================================================
+
+  const leaveCall = useCallback(async () => {
+    try {
+      const client = clientRef.current;
+
+      // =========================================================
+      // STOP LOCAL TRACK
+      // =========================================================
+
+      if (localTrackRef.current) {
+        localTrackRef.current.stop();
+        localTrackRef.current.close();
+        localTrackRef.current = null;
       }
 
-    } catch (err) {
-      console.error("❌ Join error:", err);
-      setError(err.message);
-    }
-  }
+      // =========================================================
+      // LEAVE CHANNEL
+      // =========================================================
 
-  async function leaveCall() {
-    try {
-      localTrackRef.current?.stop();
-      localTrackRef.current?.close();
-      localTrackRef.current = null;
-      clientRef.current?.removeAllListeners();
-      await clientRef.current?.leave();
+      if (client) {
+        client.removeAllListeners();
+
+        await client.leave();
+      }
+
       setJoined(false);
       setRemoteJoined(false);
-      console.log("✅ Left");
-    } catch (err) {
-      console.error("❌ Leave error:", err);
+      setRemoteLeft(false);
+      setMuted(false);
+
+      console.log("Left Agora channel");
+    } catch (e) {
+      console.error("Leave call error:", e);
     }
-  }
+  }, []);
 
-  async function toggleMute() {
-    if (!localTrackRef.current) return;
-    const next = !muted;
-    await localTrackRef.current.setMuted(next);
-    setMuted(next);
-  }
+  // =========================================================
+  // TOGGLE MUTE
+  // =========================================================
 
-  return { joined, remoteJoined, muted, ready, error, joinCall, leaveCall, toggleMute };
+  const toggleMute = useCallback(async () => {
+    try {
+      if (!localTrackRef.current) return;
+
+      const newMuted = !muted;
+
+      await localTrackRef.current.setEnabled(
+        !newMuted
+      );
+
+      setMuted(newMuted);
+    } catch (e) {
+      console.error("Mute error:", e);
+    }
+  }, [muted]);
+
+  // =========================================================
+  // RETURN
+  // =========================================================
+
+  return {
+    joined,
+    remoteJoined,
+    remoteLeft,
+    muted,
+    ready,
+    error,
+    joinCall,
+    leaveCall,
+    toggleMute,
+  };
 }

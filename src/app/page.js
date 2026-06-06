@@ -15,6 +15,7 @@ import { useRouter } from "next/navigation";
 import {
   useSession,
 } from "next-auth/react";
+import PageHeader from "@/components/PageHeader";
 
 export default function LandingPage() {
   const router = useRouter();
@@ -41,7 +42,7 @@ export default function LandingPage() {
         overflow-x-hidden
       "
     >
-
+<PageHeader />
       {/* ── HERO ── */}
       <section
         className="

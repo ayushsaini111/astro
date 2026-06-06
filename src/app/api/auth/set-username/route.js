@@ -1,6 +1,8 @@
 import { prisma } from "@/lib/prisma";
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth";
 
 export async function POST(req) {
   try {
@@ -15,11 +17,22 @@ export async function POST(req) {
       );
     }
 
-    // Get userId from cookie — set by both OTP and Google login
+    // ✅ Try cookie first (OTP users)
     const cookieStore = await cookies();
-    const userId = cookieStore.get("userId")?.value;
+    let userId = cookieStore.get("userId")?.value;
 
-    console.log("📦 userId from cookie:", userId);
+    // ✅ Fallback to NextAuth session (Google users)
+    if (!userId) {
+      const session = await getServerSession(authOptions);
+      if (session?.user?.email) {
+        const user = await prisma.user.findUnique({
+          where: { email: session.user.email },
+        });
+        userId = user?.id;
+      }
+    }
+
+    console.log("📦 userId resolved:", userId);
 
     if (!userId) {
       return NextResponse.json(
@@ -30,10 +43,7 @@ export async function POST(req) {
 
     // Check username not taken
     const existing = await prisma.user.findFirst({
-      where: {
-        username,
-        NOT: { id: userId },
-      },
+      where: { username, NOT: { id: userId } },
     });
     if (existing) {
       return NextResponse.json(

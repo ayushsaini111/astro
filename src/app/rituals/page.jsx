@@ -13,6 +13,7 @@ export default function Page() {
         title="Rituals"
         subtitle="Guided spiritual experiences"
         notificationClassName="bg-white"
+        
         profileClassName="bg-primary-main"
       />
       <div className="space-y-s40 md:space-y-s80 max-w-7xl mx-auto md:py-s64">

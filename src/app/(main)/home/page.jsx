@@ -25,7 +25,7 @@ export default async function HomePage() {
         plans: {
           where: {
             endDate: { gte: new Date() },
-            remainingMinutes: { gt: 0 },
+            remainingSeconds: { gt: 0 },
           },
           include: { plan: true },
           take: 1,
@@ -45,7 +45,7 @@ export default async function HomePage() {
         plans: {
           where: {
             endDate: { gte: new Date() },
-            remainingMinutes: { gt: 0 },
+            remainingSeconds: { gt: 0 },
           },
           include: { plan: true },
           take: 1,
@@ -76,12 +76,12 @@ export default async function HomePage() {
   const activePlan = user?.plans[0]
     ? {
         name: user.plans[0].plan.name,
-        remainingMinutes: user.plans[0].remainingMinutes,
+        remainingSeconds: user.plans[0].remainingSeconds,
         endDate: user.plans[0].endDate,
       }
     : {
         name: "Free Test",
-        remainingMinutes: 999,
+        remainingSeconds: 999,
       };
 
   return (

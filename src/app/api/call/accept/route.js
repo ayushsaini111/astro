@@ -1,3 +1,4 @@
+// api/call/accept/route.js
 import { prisma } from "@/lib/prisma";
 import { generateAgoraToken } from "@/lib/agora";
 import { getServerSession } from "next-auth";
@@ -6,11 +7,9 @@ import { cookies } from "next/headers";
 
 export async function POST(req) {
   try {
-    // ✅ Try cookie first (OTP users)
     const cookieStore = await cookies();
     let userId = cookieStore.get("userId")?.value;
 
-    // ✅ Fallback to NextAuth session (Google users)
     if (!userId) {
       const session = await getServerSession(authOptions);
       userId = session?.user?.id;
@@ -21,42 +20,49 @@ export async function POST(req) {
     }
 
     const { callId } = await req.json();
-
-    if (!callId) {
-      return Response.json({ error: "Missing callId" }, { status: 400 });
-    }
+    if (!callId) return Response.json({ error: "Missing callId" }, { status: 400 });
 
     const call = await prisma.call.findUnique({
       where: { id: callId },
       include: {
-        pandit: {
-          select: { name: true, speciality: true },
-        },
+        pandit: { select: { name: true, speciality: true } },
       },
     });
 
-    if (!call) {
-      return Response.json({ error: "Call not found" }, { status: 404 });
-    }
+    if (!call) return Response.json({ error: "Call not found" }, { status: 404 });
+
+    // ✅ Get balance info to pass to AgoraCall
+    const now = new Date();
+    const freeUsage = await prisma.freeCallUsage.findUnique({ where: { userId } });
+    const hasFreeCall = !freeUsage;
+
+    const activePlan = await prisma.userPlan.findFirst({
+      where: {
+        userId,
+        isActive: true,
+        endDate: { gte: now },
+        remainingSeconds: { gt: 0 },
+      },
+      orderBy: { endDate: "asc" },
+    });
 
     const uid = Math.floor(Math.random() * 100000);
     const token = generateAgoraToken(call.channelName, uid);
 
-    const updatedCall = await prisma.call.update({
+    await prisma.call.update({
       where: { id: callId },
-      data: {
-        status: "ONGOING",
-        startTime: new Date(),
-      },
+      data: { status: "ONGOING", startTime: now },
     });
 
     return Response.json({
-      callId: updatedCall.id,
-      channelName: updatedCall.channelName,
+      callId: call.id,
+      channelName: call.channelName,
       token,
       uid,
       appId: process.env.AGORA_APP_ID,
       pandit: call.pandit,
+      isFreeCall: hasFreeCall,                          // ✅ added
+      planSecondsLeft: activePlan?.remainingSeconds ?? 0, // ✅ added
     });
 
   } catch (err) {
@@ -64,4 +70,3 @@ export async function POST(req) {
     return Response.json({ error: "Internal server error" }, { status: 500 });
   }
 }
-

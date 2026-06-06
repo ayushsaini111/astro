@@ -35,5 +35,5 @@ export async function POST(req) {
     return NextResponse.json({ redirect: "/username" });
   }
 
-  return NextResponse.json({ redirect: "/home" });
+  return NextResponse.json({ redirect: "/" });
 }

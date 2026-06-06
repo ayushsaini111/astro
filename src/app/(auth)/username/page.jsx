@@ -10,43 +10,44 @@ export default function UsernamePage() {
   const [error, setError] = useState("");
   const router = useRouter();
 
-  async function handleSubmit() {
-    if (username.trim().length < 3) {
-      setError("Username must be at least 3 characters");
-      return;
-    }
-    if (!dob) {
-      setError("Date of birth is required");
-      return;
-    }
-
-    setLoading(true);
-    setError("");
-
-    try {
-      const res = await fetch("/api/auth/set-username", {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username, dob }),
-      });
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        setError(data.error ?? "Something went wrong");
-        setLoading(false);
-        return;
-      }
-
-      router.push("/home");
-
-    } catch (err) {
-      setError("Network error. Try again.");
-      setLoading(false);
-    }
+async function handleSubmit() {
+  if (username.trim().length < 3) {
+    setError("Username must be at least 3 characters");
+    return;
+  }
+  if (!dob) {
+    setError("Date of birth is required");
+    return;
   }
 
+  setLoading(true);
+  setError("");
+
+  try {
+    const res = await fetch("/api/auth/set-username", {
+      method: "POST",
+      credentials: "include", // ✅ sends cookies
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username, dob }),
+    });
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      setError(data.error ?? "Something went wrong");
+      setLoading(false);
+      return;
+    }
+
+    // ✅ Redirect based on where they came from
+    const redirectTo = new URLSearchParams(window.location.search).get("from");
+    router.push(redirectTo ?? "/home");
+
+  } catch (err) {
+    setError("Network error. Try again.");
+    setLoading(false);
+  }
+}
 return (
   <div className="min-h-screen bg-background flex items-center justify-center px-4">
 

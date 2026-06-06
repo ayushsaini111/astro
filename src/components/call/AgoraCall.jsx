@@ -1,72 +1,403 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { useAgora } from "@/hooks/useAgora";
+import { useRouter } from "next/navigation";
 
-export default function AgoraCall({ callData, callerInfo, onEnd }) {
-  const { joined, remoteJoined, muted, ready, error, joinCall, leaveCall, toggleMute } = useAgora();
+const FREE_CALL_SECONDS = 5;
+
+export default function AgoraCall({
+  callData,
+  callerInfo,
+  onEnd,
+  forceEnd,
+}) {
+  const {
+    joined,
+    remoteJoined,
+    remoteLeft,
+    muted,
+    ready,
+    error,
+    joinCall,
+    leaveCall,
+    toggleMute,
+  } = useAgora();
+
   const [duration, setDuration] = useState(0);
   const [ending, setEnding] = useState(false);
   const [status, setStatus] = useState("connecting");
+  const [warning, setWarning] = useState(null);
+
   const timerRef = useRef(null);
+  const freeTimerRef = useRef(null);
+  const balanceCheckRef = useRef(null);
+
   const joinedRef = useRef(false);
+  const callStartRef = useRef(null);
+  const endingRef = useRef(false);
+  const wasConnectedRef = useRef(false);
+  const freeCallEndedRef = useRef(false);
+
+  const router = useRouter();
+
+  // =========================================================
+  // GET RAW REMAINING SECONDS
+  // =========================================================
+
+async function getRawRemainingSeconds() {
+  try {
+    const res = await fetch("/api/plans/status");
+
+    // ✅ don't crash on unauthorized
+    if (!res.ok) {
+      console.error(
+        "Plans API failed:",
+        res.status
+      );
+
+      return Infinity;
+    }
+
+    const data = await res.json();
+
+    return (data.activePlans ?? []).reduce(
+      (sum, p) =>
+        sum + (p.remainingSeconds ?? 0),
+      0
+    );
+  } catch (e) {
+    console.error(
+      "Plans API error:",
+      e
+    );
+
+    // ✅ NEVER end call on API failure
+    return Infinity;
+  }
+}
+
+  // =========================================================
+  // HANDLE END
+  // =========================================================
+
+  const handleEnd = useCallback(async () => {
+    if (endingRef.current) return;
+
+    endingRef.current = true;
+
+    setEnding(true);
+    setStatus("ending");
+
+    clearInterval(timerRef.current);
+    clearInterval(freeTimerRef.current);
+    clearInterval(balanceCheckRef.current);
+
+    const exactDuration = callStartRef.current
+      ? Math.floor((Date.now() - callStartRef.current) / 1000)
+      : 0;
+
+    try {
+      await leaveCall();
+    } catch (e) {
+      console.error(e);
+    }
+
+    try {
+      await fetch("/api/call/end", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          callId: callData.callId,
+          clientDuration: exactDuration,
+        }),
+      });
+    } catch (e) {
+      console.error(e);
+    }
+
+    onEnd();
+  }, [callData, leaveCall, onEnd]);
+
+  // =========================================================
+  // FORCE END
+  // =========================================================
+
+  useEffect(() => {
+    if (forceEnd && !endingRef.current) {
+      handleEnd();
+    }
+  }, [forceEnd, handleEnd]);
+
+  // =========================================================
+  // JOIN CALL
+  // =========================================================
 
   useEffect(() => {
     if (!ready || !callData || joinedRef.current) return;
+
     joinedRef.current = true;
-    console.log("📞 Joining with:", callData);
+
     joinCall({
       appId: callData.appId,
       token: callData.token,
       channelName: callData.channelName,
       uid: callData.uid,
     });
-  }, [ready]);
+  }, [ready, callData, joinCall]);
 
-  // ✅ Fixed timer — was missing setInterval body
+  // =========================================================
+  // REMOTE JOINED
+  // =========================================================
+
   useEffect(() => {
-    if (!remoteJoined) {
-      clearInterval(timerRef.current);
-      return;
-    }
+    if (!remoteJoined || !callData?.callId) return;
+
+    wasConnectedRef.current = true;
+
     setStatus("connected");
-    timerRef.current = setInterval(() => {
-      setDuration((d) => d + 1);
-    }, 1000);
-    return () => clearInterval(timerRef.current);
-  }, [remoteJoined]);
 
-  // ✅ Also update status when locally joined (waiting for other side)
+    fetch(`/api/call/status?callId=${callData.callId}`)
+      .then((r) => r.json())
+      .then((serverData) => {
+        const serverStart = serverData.startTime
+          ? new Date(serverData.startTime).getTime()
+          : Date.now();
+
+        callStartRef.current = serverStart;
+
+        setDuration(
+          Math.floor((Date.now() - serverStart) / 1000)
+        );
+
+        timerRef.current = setInterval(() => {
+          setDuration(
+            Math.floor((Date.now() - callStartRef.current) / 1000)
+          );
+        }, 500);
+
+        // =========================================================
+        // FREE CALL TIMER
+        // =========================================================
+
+        if (callData.isFreeCall && !freeCallEndedRef.current) {
+          freeTimerRef.current = setInterval(async () => {
+            if (
+              freeCallEndedRef.current ||
+              endingRef.current
+            ) {
+              clearInterval(freeTimerRef.current);
+              return;
+            }
+
+            const elapsed =
+              Date.now() - callStartRef.current;
+
+            if (elapsed >= FREE_CALL_SECONDS * 1000) {
+              freeCallEndedRef.current = true;
+
+              clearInterval(freeTimerRef.current);
+
+              try {
+                const rawSeconds =
+                  await getRawRemainingSeconds();
+
+                if (rawSeconds > 0) {
+                  setWarning("switching_to_plan");
+
+                  setTimeout(() => {
+                    setWarning(null);
+                  }, 3000);
+                } else {
+                  setWarning("no_balance");
+
+                  setTimeout(async () => {
+                    await handleEnd();
+                    router.push("/plans");
+                  }, 1500);
+                }
+              } catch (e) {
+  console.error(
+    "Balance API failed:",
+    e
+  );
+}
+            }
+          }, 100);
+        }
+      })
+      .catch(() => {
+        callStartRef.current = Date.now();
+
+        setDuration(0);
+
+        timerRef.current = setInterval(() => {
+          setDuration(
+            Math.floor((Date.now() - callStartRef.current) / 1000)
+          );
+        }, 500);
+      });
+
+    return () => {
+      clearInterval(timerRef.current);
+      clearInterval(freeTimerRef.current);
+    };
+  }, [remoteJoined, callData, handleEnd, router]);
+
+  // =========================================================
+  // REAL REMOTE LEAVE
+  // =========================================================
+
   useEffect(() => {
-    if (joined && !remoteJoined) {
+    if (!remoteLeft || endingRef.current) return;
+
+    setWarning("call_cancelled");
+
+    setTimeout(async () => {
+      await handleEnd();
+    }, 1500);
+  }, [remoteLeft, handleEnd]);
+
+  // =========================================================
+  // WAITING STATUS
+  // =========================================================
+
+  useEffect(() => {
+    if (
+      joined &&
+      !remoteJoined &&
+      !wasConnectedRef.current
+    ) {
       setStatus("waiting");
     }
   }, [joined, remoteJoined]);
 
-  function formatTime(s) {
-    return `${Math.floor(s / 60).toString().padStart(2, "0")}:${(s % 60).toString().padStart(2, "0")}`;
+  // =========================================================
+  // AUTO END IF NO ANSWER
+  // =========================================================
+
+  useEffect(() => {
+    if (!joined || remoteJoined) return;
+
+    const timeout = setTimeout(() => {
+      if (!wasConnectedRef.current) {
+        setWarning("no_answer");
+
+        setTimeout(() => {
+          handleEnd();
+        }, 2000);
+      }
+    }, 60000);
+
+    return () => clearTimeout(timeout);
+  }, [joined, remoteJoined, handleEnd]);
+
+  // =========================================================
+  // BALANCE CHECK
+  // =========================================================
+
+// =========================================================
+// BALANCE CHECK ONLY FOR USER SIDE
+// =========================================================
+
+useEffect(() => {
+  // ✅ only user side should check balance
+  // pandit side does not have user balance APIs
+  if (
+    !remoteJoined ||
+    callerInfo?.role === "pandit"
+  ) {
+    return;
   }
 
-  async function handleEnd() {
-    if (ending) return;
-    setEnding(true);
-    setStatus("ending");
-    clearInterval(timerRef.current);
+  async function checkBalance() {
+    if (endingRef.current) return;
+
     try {
-      await leaveCall();
-      await fetch("/api/call/end", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ callId: callData.callId }),
-      });
+      // ✅ get actual remaining seconds
+      const rawSeconds =
+        await getRawRemainingSeconds();
+
+      console.log(
+        "BALANCE CHECK:",
+        rawSeconds
+      );
+
+      // ✅ during free call don't check plan yet
+      if (
+        callData?.isFreeCall &&
+        !freeCallEndedRef.current
+      ) {
+        return;
+      }
+
+      // ✅ no balance left
+      if (rawSeconds <= 0) {
+        clearInterval(balanceCheckRef.current);
+
+        setWarning("no_balance");
+
+        setTimeout(async () => {
+          await handleEnd();
+
+          router.push("/plans");
+        }, 1500);
+      }
     } catch (e) {
-      console.error(e);
+      // ❌ IMPORTANT
+      // NEVER end call on API failure
+      console.error(
+        "Balance check failed:",
+        e
+      );
     }
-    onEnd();
   }
 
-  const name = callerInfo?.name ?? callerInfo?.username ?? "Connected";
+  // first check after 10 sec
+  const firstCheck = setTimeout(() => {
+    checkBalance();
+
+    // repeat every 10 sec
+    balanceCheckRef.current = setInterval(
+      checkBalance,
+      10000
+    );
+  }, 10000);
+
+  return () => {
+    clearTimeout(firstCheck);
+
+    clearInterval(balanceCheckRef.current);
+  };
+}, [
+  remoteJoined,
+  callerInfo,
+  callData,
+  handleEnd,
+  router,
+]);
+
+  // =========================================================
+  // FORMAT TIME
+  // =========================================================
+
+  function formatTime(s) {
+    return `${Math.floor(s / 60)
+      .toString()
+      .padStart(2, "0")}:${(s % 60)
+      .toString()
+      .padStart(2, "0")}`;
+  }
+
+  const name =
+    callerInfo?.name ??
+    callerInfo?.username ??
+    "Connected";
+
   const initials = name.slice(0, 2).toUpperCase();
+
   const speciality = callerInfo?.speciality ?? "";
 
   const statusText = {
@@ -76,7 +407,18 @@ export default function AgoraCall({ callData, callerInfo, onEnd }) {
     ending: "Ending call...",
   }[status];
 
-  const statusColor = status === "connected" ? "#34d399" : "#94a3b8";
+  const statusColor =
+    status === "connected"
+      ? "#34d399"
+      : "#94a3b8";
+
+  const warningText = {
+    no_balance: "⛔ Plan over. Ending call...",
+    switching_to_plan:
+      "✅ Free call over. Continuing on your plan.",
+    no_answer: "📵 No answer. Ending call...",
+    call_cancelled: "📵 Call ended by other side",
+  }[warning];
 
   return (
     <div style={{
@@ -88,29 +430,42 @@ export default function AgoraCall({ callData, callerInfo, onEnd }) {
       fontFamily: "-apple-system, BlinkMacSystemFont, sans-serif",
     }}>
 
-      {/* Status */}
       <p style={{ color: statusColor, fontSize: 12, letterSpacing: 3, textTransform: "uppercase", margin: 0 }}>
         {statusText}
       </p>
 
-      {/* Center */}
-      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 16 }}>
+      {warning && (
+        <div style={{
+          position: "absolute", top: 100, left: 24, right: 24,
+          background: ["no_balance", "no_answer", "call_cancelled"].includes(warning) ? "#7f1d1d" : "#064e3b",
+          border: `1px solid ${["no_balance", "no_answer", "call_cancelled"].includes(warning) ? "#ef4444" : "#34d399"}`,
+          borderRadius: 12, padding: "12px 16px",
+          color: "white", fontSize: 14, fontWeight: 600,
+          textAlign: "center", zIndex: 10,
+        }}>
+          {warningText}
+        </div>
+      )}
 
-        {/* Avatar */}
+      {callData?.isFreeCall && remoteJoined && duration <= FREE_CALL_SECONDS && !warning && (
+        <div style={{
+          position: "absolute", top: 100, left: 24, right: 24,
+          background: "rgba(52,211,153,0.15)",
+          border: "1px solid rgba(52,211,153,0.3)",
+          borderRadius: 12, padding: "10px 16px",
+          color: "#34d399", fontSize: 13, fontWeight: 600,
+          textAlign: "center",
+        }}>
+          Free call: {Math.max(0, FREE_CALL_SECONDS - duration)}s remaining
+        </div>
+      )}
+
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 16 }}>
         <div style={{ position: "relative", width: 140, height: 140 }}>
           {joined && (
             <>
-              <div style={{
-                position: "absolute", inset: -20, borderRadius: "50%",
-                background: "rgba(52,211,153,0.1)",
-                animation: "pulse1 2s ease-in-out infinite",
-              }} />
-              <div style={{
-                position: "absolute", inset: -10, borderRadius: "50%",
-                background: "rgba(52,211,153,0.15)",
-                animation: "pulse1 2s ease-in-out infinite",
-                animationDelay: "0.5s",
-              }} />
+              <div style={{ position: "absolute", inset: -20, borderRadius: "50%", background: "rgba(52,211,153,0.1)", animation: "pulse1 2s ease-in-out infinite" }} />
+              <div style={{ position: "absolute", inset: -10, borderRadius: "50%", background: "rgba(52,211,153,0.15)", animation: "pulse1 2s ease-in-out infinite", animationDelay: "0.5s" }} />
             </>
           )}
           <div style={{
@@ -127,96 +482,53 @@ export default function AgoraCall({ callData, callerInfo, onEnd }) {
           </div>
         </div>
 
-        {/* Name */}
         <div style={{ textAlign: "center" }}>
           <p style={{ color: "#f1f5f9", fontSize: 26, fontWeight: 600, margin: 0 }}>{name}</p>
           {speciality && <p style={{ color: "#64748b", fontSize: 14, marginTop: 4 }}>{speciality}</p>}
         </div>
 
-        {/* Timer */}
-        <div style={{
-          background: "rgba(255,255,255,0.05)",
-          border: "1px solid rgba(255,255,255,0.1)",
-          borderRadius: 999, padding: "8px 24px",
-        }}>
-          <p style={{
-            color: remoteJoined ? "#f1f5f9" : "#475569",
-            fontSize: 22, fontFamily: "monospace", letterSpacing: 4, margin: 0,
-          }}>
+        <div style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 999, padding: "8px 24px" }}>
+          <p style={{ color: remoteJoined ? "#f1f5f9" : "#475569", fontSize: 22, fontFamily: "monospace", letterSpacing: 4, margin: 0 }}>
             {remoteJoined ? formatTime(duration) : "--:--"}
           </p>
         </div>
 
-        {/* Sound bars */}
         {remoteJoined && !muted && (
           <div style={{ display: "flex", alignItems: "flex-end", gap: 4, height: 32 }}>
             {[0.3, 0.6, 1, 0.7, 0.4, 0.8, 0.5, 1, 0.6, 0.3].map((h, i) => (
-              <div key={i} style={{
-                width: 4, borderRadius: 4, background: "#34d399",
-                height: `${h * 100}%`,
-                animation: "bar 1s ease-in-out infinite alternate",
-                animationDelay: `${i * 0.1}s`,
-              }} />
+              <div key={i} style={{ width: 4, borderRadius: 4, background: "#34d399", height: `${h * 100}%`, animation: "bar 1s ease-in-out infinite alternate", animationDelay: `${i * 0.1}s` }} />
             ))}
           </div>
         )}
 
-        {muted && <p style={{ color: "#ef4444", fontSize: 12, letterSpacing: 2, textTransform: "uppercase" }}>🔇 Muted</p>}
-        {error && <p style={{ color: "#ef4444", fontSize: 13 }}>⚠️ {error}</p>}
+        {muted && <p style={{ color: "#ef4444", fontSize: 12, letterSpacing: 2, textTransform: "uppercase" }}>Muted</p>}
+        {error && <p style={{ color: "#ef4444", fontSize: 13 }}>Error: {error}</p>}
       </div>
 
-      {/* Controls */}
       <div style={{ display: "flex", alignItems: "flex-end", gap: 40 }}>
-
         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
-          <button onClick={toggleMute} style={{
-            width: 64, height: 64, borderRadius: "50%",
-            border: muted ? "2px solid #ef4444" : "2px solid rgba(255,255,255,0.15)",
-            background: muted ? "rgba(239,68,68,0.2)" : "rgba(255,255,255,0.08)",
-            display: "flex", alignItems: "center", justifyContent: "center",
-            cursor: "pointer", fontSize: 24,
-          }}>
-            {muted ? "🔇" : "🎙️"}
+          <button onClick={toggleMute} style={{ width: 64, height: 64, borderRadius: "50%", border: muted ? "2px solid #ef4444" : "2px solid rgba(255,255,255,0.15)", background: muted ? "rgba(239,68,68,0.2)" : "rgba(255,255,255,0.08)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", fontSize: 24 }}>
+            {muted ? "🔇" : "🎤"}
           </button>
           <span style={{ color: "#64748b", fontSize: 12 }}>{muted ? "Unmute" : "Mute"}</span>
         </div>
 
         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
-          <button onClick={handleEnd} disabled={ending} style={{
-            width: 80, height: 80, borderRadius: "50%", border: "none",
-            background: ending ? "#7f1d1d" : "#ef4444",
-            display: "flex", alignItems: "center", justifyContent: "center",
-            cursor: ending ? "not-allowed" : "pointer", fontSize: 32,
-            boxShadow: "0 8px 32px rgba(239,68,68,0.4)",
-            transform: "rotate(135deg)",
-          }}>
+          <button onClick={handleEnd} disabled={ending} style={{ width: 80, height: 80, borderRadius: "50%", border: "none", background: ending ? "#7f1d1d" : "#ef4444", display: "flex", alignItems: "center", justifyContent: "center", cursor: ending ? "not-allowed" : "pointer", fontSize: 32, boxShadow: "0 8px 32px rgba(239,68,68,0.4)", transform: "rotate(135deg)" }}>
             📞
           </button>
           <span style={{ color: "#64748b", fontSize: 12 }}>{ending ? "Ending..." : "End Call"}</span>
         </div>
 
         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
-          <button style={{
-            width: 64, height: 64, borderRadius: "50%",
-            border: "2px solid rgba(255,255,255,0.15)",
-            background: "rgba(255,255,255,0.08)",
-            display: "flex", alignItems: "center", justifyContent: "center",
-            cursor: "pointer", fontSize: 24,
-          }}>🔊</button>
+          <button style={{ width: 64, height: 64, borderRadius: "50%", border: "2px solid rgba(255,255,255,0.15)", background: "rgba(255,255,255,0.08)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", fontSize: 24 }}>🔊</button>
           <span style={{ color: "#64748b", fontSize: 12 }}>Speaker</span>
         </div>
-
       </div>
 
       <style>{`
-        @keyframes pulse1 {
-          0%, 100% { transform: scale(1); opacity: 0.6; }
-          50% { transform: scale(1.15); opacity: 0.2; }
-        }
-        @keyframes bar {
-          0% { transform: scaleY(0.4); }
-          100% { transform: scaleY(1); }
-        }
+        @keyframes pulse1 { 0%, 100% { transform: scale(1); opacity: 0.6; } 50% { transform: scale(1.15); opacity: 0.2; } }
+        @keyframes bar { 0% { transform: scaleY(0.4); } 100% { transform: scaleY(1); } }
       `}</style>
     </div>
   );

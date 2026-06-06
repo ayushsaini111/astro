@@ -13,10 +13,10 @@ datasource db {
 
 enum CallStatus {
   INITIATED
+  RINGING
   ONGOING
   COMPLETED
   FAILED
-  RINGING      
 }
 
 enum PaymentStatus {
@@ -25,31 +25,58 @@ enum PaymentStatus {
   FAILED
 }
 
+enum PlanType {
+  TOPUP
+  MONTHLY
+  YEARLY
+}
+
+enum BillingType {
+  FREE
+  PLAN
+  WALLET
+}
+
 ///////////////////////
 // USER
 ///////////////////////
 
 model User {
-  id         String  @id @default(cuid())
-  username   String? @unique
-  email      String? @unique
-  phone      String? @unique
+  id         String    @id @default(cuid())
+  username   String?   @unique
+  email      String?   @unique
+  phone      String?   @unique
   dob        DateTime?
   profilePic String?
-  isVerified Boolean @default(false)
-  isBlocked  Boolean @default(false)
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  isVerified Boolean   @default(false)
+  isBlocked  Boolean   @default(false)
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
   deletedAt  DateTime?
 
-  wallet       Wallet?
-  sessions     Session[]
-  devices      Device[]
-  otpRequests  OTPVerification[]
-  transactions Transaction[]
-  orders       Order[]
-  calls        Call[]
-  plans        UserPlan[]
+  wallet        Wallet?
+  sessions      Session[]
+  devices       Device[]
+  otpRequests   OTPVerification[]
+  transactions  Transaction[]
+  orders        Order[]
+  calls         Call[]
+  plans         UserPlan[]
+  freeCallUsage FreeCallUsage?   // ✅ track free 10-min call
+}
+
+///////////////////////
+// FREE CALL USAGE
+// One per user — used to track if 10-min free call is consumed
+///////////////////////
+
+model FreeCallUsage {
+  id      String   @id @default(cuid())
+  userId  String   @unique
+  callId  String
+  usedAt  DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
 }
 
 ///////////////////////
@@ -69,8 +96,6 @@ model Device {
 
   @@index([userId])
 }
-
-
 
 ///////////////////////
 // SESSION
@@ -97,10 +122,10 @@ model OTPVerification {
   attempts   Int      @default(0)
   expiresAt  DateTime
   verified   Boolean  @default(false)
+  createdAt  DateTime @default(now())
 
-  createdAt DateTime @default(now())
-  user      User?    @relation(fields: [userId], references: [id])
-  userId    String?
+  user   User?   @relation(fields: [userId], references: [id])
+  userId String?
 
   @@index([identifier])
 }
@@ -110,14 +135,13 @@ model OTPVerification {
 ///////////////////////
 
 model Wallet {
-  id      String @id @default(cuid())
-  userId  String @unique
-  balance Float  @default(0)
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  balance   Float    @default(0)
+  updatedAt DateTime @updatedAt
 
   user         User          @relation(fields: [userId], references: [id])
   transactions Transaction[]
-
-  updatedAt DateTime @updatedAt
 }
 
 ///////////////////////
@@ -137,8 +161,7 @@ model Transaction {
 
   razorpayOrderId   String?
   razorpayPaymentId String?
-
-  idempotencyKey String? @unique
+  idempotencyKey    String? @unique
 
   createdAt DateTime @default(now())
 
@@ -148,7 +171,7 @@ model Transaction {
 }
 
 ///////////////////////
-// PAYMENT LOG (WEBHOOK DEBUG)
+// PAYMENT LOG
 ///////////////////////
 
 model PaymentLog {
@@ -165,37 +188,44 @@ model PaymentLog {
 model Call {
   id String @id @default(cuid())
 
-  userId String
-  user   User   @relation(fields: [userId], references: [id])
+  userId   String?
+  user     User?   @relation(fields: [userId], references: [id])
+  panditId String
+  pandit   Pandit @relation(fields: [panditId], references: [id])
 
   channelName String
   agoraToken  String?
+  type        String // VOICE / VIDEO
+  deletedUsername String?
+  // ✅ Billing
+  billingType   BillingType @default(PLAN)
+  ratePerMinute Float       @default(0)
+  isFreeCall    Boolean     @default(false) // ✅ was this the free 10-min call?
+  freeSeconds   Int         @default(0)     // ✅ how many seconds were free
+  paidSeconds   Int         @default(0)     // ✅ how many seconds were charged
 
-  type String // VOICE / VIDEO
-
-  ratePerMinute Float
-  billingType   String // WALLET / PLAN
-
-  status CallStatus @default(INITIATED)
+  status    CallStatus @default(INITIATED)
 
   startTime DateTime?
   endTime   DateTime?
 
-  duration        Int?
-  billableSeconds Int?
-  totalCost       Float?
+  duration        Int?   // total seconds
+  billableSeconds Int?   // seconds actually charged
+  totalCost       Float? @default(0)
 
   autoEnded Boolean @default(false)
   endedBy   String?
 
-  createdAt DateTime @default(now())
- panditId  String        // ADD THIS
-  pandit    Pandit        @relation(fields: [panditId], references: [id])  // ADD THIS
+  createdAt       DateTime       @default(now())
   events          CallEvent[]
   billing         CallBilling?
   liveState       CallLiveState? @relation(fields: [callLiveStateId], references: [id])
   callLiveStateId String?
 }
+
+///////////////////////
+// PANDIT
+///////////////////////
 
 model Pandit {
   id          String   @id @default(cuid())
@@ -205,8 +235,9 @@ model Pandit {
   ratePerMin  Float    @default(0)
   profilePic  String?
   isAvailable Boolean  @default(true)
-  calls       Call[]
   createdAt   DateTime @default(now())
+
+  calls Call[]
 }
 
 ///////////////////////
@@ -214,11 +245,9 @@ model Pandit {
 ///////////////////////
 
 model CallEvent {
-  id String @id @default(cuid())
-
-  callId String
-  call   Call   @relation(fields: [callId], references: [id])
-
+  id        String   @id @default(cuid())
+  callId    String
+  call      Call     @relation(fields: [callId], references: [id])
   type      String
   metadata  Json?
   createdAt DateTime @default(now())
@@ -231,8 +260,7 @@ model CallEvent {
 ///////////////////////
 
 model CallBilling {
-  id String @id @default(cuid())
-
+  id     String @id @default(cuid())
   callId String @unique
   call   Call   @relation(fields: [callId], references: [id])
 
@@ -240,6 +268,7 @@ model CallBilling {
   chargedDuration Int
   totalCost       Float
 
+  freeMinutesUsed Int   @default(0) // ✅ how many free minutes used
   walletDeducted  Float @default(0)
   planUsedMinutes Int   @default(0)
 
@@ -250,7 +279,7 @@ model CallBilling {
 }
 
 ///////////////////////
-// LIVE STATE (REAL-TIME)
+// LIVE STATE
 ///////////////////////
 
 model CallLiveState {
@@ -259,9 +288,9 @@ model CallLiveState {
 
   currentCost Float @default(0)
   elapsedSec  Int   @default(0)
+  lastSynced  DateTime @default(now())
 
-  lastSynced DateTime @default(now())
-  calls      Call[]
+  calls Call[]
 }
 
 ///////////////////////
@@ -280,12 +309,18 @@ model CallAlert {
 ///////////////////////
 
 model Plan {
-  id      String @id @default(cuid())
-  name    String
-  price   Float
-  minutes Int
+  id          String   @id @default(cuid())
+  name        String
+  price       Int
+  seconds     Int      // ✅ changed from minutes
+  validDays   Int
+  planType    PlanType @default(MONTHLY)
+  perDayLimit Int?     // ✅ now in seconds
+  includes    String[]
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
 
-  users UserPlan[]
+  userPlans UserPlan[]
 }
 
 model UserPlan {
@@ -293,14 +328,17 @@ model UserPlan {
   userId String
   planId String
 
-  startDate        DateTime
-  endDate          DateTime
-  remainingMinutes Int
+  remainingSeconds Int              // ✅ changed from remainingMinutes
+  perDayUsedSeconds Int @default(0) // ✅ changed from perDayUsed
+  lastUsedDate     DateTime?
+
+  startDate DateTime @default(now())
+  endDate   DateTime
+  isActive  Boolean  @default(true)
 
   user User @relation(fields: [userId], references: [id])
   plan Plan @relation(fields: [planId], references: [id])
 }
-
 ///////////////////////
 // PRODUCTS
 ///////////////////////
@@ -312,10 +350,8 @@ model Product {
   price       Float
   stock       Int
   images      String[]
-
-  isActive Boolean @default(true)
-
-  createdAt DateTime @default(now())
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
 }
 
 ///////////////////////
@@ -323,28 +359,24 @@ model Product {
 ///////////////////////
 
 model Order {
-  id     String @id @default(cuid())
-  userId String
-
+  id          String @id @default(cuid())
+  userId      String
   totalAmount Float
   status      String
   address     String
-
-  paymentId String?
+  paymentId   String?
+  createdAt   DateTime @default(now())
 
   user  User        @relation(fields: [userId], references: [id])
   items OrderItem[]
-
-  createdAt DateTime @default(now())
 }
 
 model OrderItem {
   id        String @id @default(cuid())
   orderId   String
   productId String
-
-  quantity Int
-  price    Float
+  quantity  Int
+  price     Float
 
   order Order @relation(fields: [orderId], references: [id])
 }
@@ -354,22 +386,20 @@ model OrderItem {
 ///////////////////////
 
 model DeliveryPartner {
-  id          String @id @default(cuid())
+  id          String   @id @default(cuid())
   name        String
   phone       String
   vehicleType String
+  isAvailable Boolean  @default(true)
 
-  isAvailable Boolean    @default(true)
-  deliveries  Delivery[]
+  deliveries Delivery[]
 }
 
 model Delivery {
-  id        String @id @default(cuid())
-  orderId   String
-  partnerId String
-
-  status String
-
+  id          String    @id @default(cuid())
+  orderId     String
+  partnerId   String
+  status      String
   assignedAt  DateTime  @default(now())
   deliveredAt DateTime?
 

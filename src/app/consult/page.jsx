@@ -17,7 +17,7 @@ export default async function ConsultPage() {
       where: { id: userId },
       include: {
         plans: {
-          where: { endDate: { gte: new Date() }, remainingMinutes: { gt: 0 } },
+          where: { endDate: { gte: new Date() }, remainingSeconds: { gt: 0 } },
           include: { plan: true },
           take: 1,
         },
@@ -31,7 +31,7 @@ export default async function ConsultPage() {
       where: { email: session.user.email },
       include: {
         plans: {
-          where: { endDate: { gte: new Date() }, remainingMinutes: { gt: 0 } },
+          where: { endDate: { gte: new Date() }, remainingSeconds: { gt: 0 } },
           include: { plan: true },
           take: 1,
         },
@@ -50,18 +50,16 @@ export default async function ConsultPage() {
   const activePlan = user.plans[0]
     ? {
         name: user.plans[0].plan.name,
-        remainingMinutes: user.plans[0].remainingMinutes,
+        remainingSeconds: user.plans[0].remainingSeconds,
         endDate: user.plans[0].endDate,
       }
-    : { name: "Free Test", remainingMinutes: 999 };
+    : { name: "Free Test", remainingSeconds: 999 };
 
   return (
     <ConsultClient
       pandits={pandits}
       userPlan={activePlan}
-      username={user.username}
       userId={user.id}
-      profilePic={user.profilePic}
     />
   );
 }
