@@ -5,7 +5,7 @@ import { useRouter, useParams } from "next/navigation";
 import Image from "next/image";
 import Button from "@/components/ui/Button";
 import BookingConfirmation from "@/components/BookingConfirmation";
-import CeremonyBookingModal from "@/components/ceremonies/CeremonyBookingModal";
+import CeremonyBookingModal from "@/components/Ceremonies/CeremonyBookingModal";
 import { CEREMONIES_DATA } from "@/data/ceremonies";
 
 export default function CeremonyDetailPage() {
