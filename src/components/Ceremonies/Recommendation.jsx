@@ -1,7 +1,6 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-
 import React from "react";
 import Image from "next/image";
 
@@ -10,17 +9,14 @@ function Recommendation({
   sectionTitle = "Recommended for You",
   actionText = "View All",
   categories = [],
-  rituals = [],
+  ritualsByCategory = {},
 }) {
   const router = useRouter();
+
   return (
     <section className="flex flex-col gap-s40">
-
-    
-
       {/* Recommended */}
       <div className="flex flex-col gap-s32">
-
         {/* Header */}
         <div
           className="
@@ -28,10 +24,8 @@ function Recommendation({
             items-center
             justify-between
             px-s16
-          
           "
         >
-
           <h3 className="heading-h5 text-main">
             {sectionTitle}
           </h3>
@@ -43,140 +37,122 @@ function Recommendation({
               hover:opacity-80
               transition-all
             "
-             onClick={() =>
-    router.push("/ritualPackages")
-  }
+            onClick={() => router.push("ceremonies/cermony")}
           >
             {actionText}
           </button>
-
         </div>
 
-        {/* Mobile Slider / Desktop Grid */}
+        {/* Grid */}
         <div
           className="
-            flex
-            lg:grid
-            lg:grid-cols-2
-            xl:grid-cols-3
-            gap-s24
-            overflow-x-auto
-            lg:overflow-visible
-            hide-scrollbar
+            grid
+            grid-cols-2
+            lg:grid-cols-3
+            xl:grid-cols-4
+
+            gap-x-s16
+            gap-y-s32
+
             px-s16
-          
           "
         >
-
-          {rituals.map((item) => (
-            <div
-              key={item.id}
-              className="
-                min-w-[240px]
-                lg:min-w-0
-                flex
-                flex-col
-                gap-s16
-                group
-              "
-            >
-
-              {/* Image */}
+          {categories.flatMap((category) =>
+            ritualsByCategory[category]?.map((item) => (
               <div
+                key={item.id}
                 className="
-                  relative
-                  w-full
-                  h-[160px]
-                  lg:h-[240px]
-                  xl:h-[280px]
-                  rounded-r24
-                  overflow-hidden
+                  flex
+                  flex-col
+                  gap-s16
+
+                  group
+                  cursor-pointer
                 "
               >
-
-                <Image
-                  src={item.image}
-                  alt={item.title}
-                  fill
-                  sizes="
-                    (max-width: 768px) 240px,
-                    (max-width: 1280px) 50vw,
-                    33vw
-                  "
+                {/* IMAGE */}
+                <div
                   className="
-                    object-cover
-                    transition-transform
-                    duration-500
-                    group-hover:scale-105
-                    pointer-events-none
-                  "
-                />
+                    relative
 
-              </div>
+                    w-full
 
-              {/* Content */}
-              <div className="flex flex-col gap-s8">
+                    aspect-[1/0.72]
 
-                <h4
-                  className="
-                    heading-h6
-                    lg:heading-h5
-                    text-main
+                    rounded-r24
+                    overflow-hidden
+
+                    bg-[#EDE2D8]
                   "
                 >
-                  {item.title}
-                </h4>
-
-                <p
-                  className="
-                    body-small
-                    lg:body-default
-                    text-secondary
-                    leading-relaxed
-                  "
-                >
-                  {item.description}
-                </p>
-
-                <button
-                  className="
-                    group/link
-                    body-small
-                    text-primary-light
-                    font-medium
-                    inline-flex
-                    items-center
-                    gap-1
-                    hover:opacity-80
-                    transition-all
-                    duration-200
-                    cursor-pointer
-                    w-fit
-                  "
-                >
-                  Learn More
-
-                  <span
+                  <Image
+                    src={item.image}
+                    alt={item.title}
+                    fill
+                    sizes="
+                      (max-width:768px) 50vw,
+                      (max-width:1280px) 33vw,
+                      25vw
+                    "
                     className="
+                      object-cover
+
                       transition-transform
-                      duration-200
-                      group-hover/link:translate-x-1
+                      duration-700
+
+                      group-hover:scale-105
+                    "
+                  />
+
+                  <div
+                    className="
+                      absolute
+                      inset-0
+
+                      bg-gradient-to-t
+                      from-black/30
+                      via-black/5
+                      to-transparent
+                    "
+                  />
+                </div>
+
+                {/* CONTENT */}
+                <div className="flex flex-col gap-s8">
+                  <h4
+                    className="
+                      text-[15px]
+                      lg:text-[20px]
+
+                      font-semibold
+
+                      text-main
+
+                      leading-[130%]
                     "
                   >
-                    →
-                  </span>
+                    {item.title}
+                  </h4>
 
-                </button>
+                  <p
+                    className="
+                      text-[13px]
+                      lg:text-base
 
+                      text-secondary
+
+                      leading-relaxed
+                      line-clamp-2
+                    "
+                  >
+                    {item.description}
+                  </p>
+                </div>
               </div>
-
-            </div>
-          ))}
-
+            ))
+          )}
         </div>
-
       </div>
-
     </section>
   );
 }

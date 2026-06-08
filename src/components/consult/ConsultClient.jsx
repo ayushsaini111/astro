@@ -28,7 +28,7 @@ export default function ConsultClient({ pandits, userPlan, username, userId, pro
   function updateRequestedCalls(updater) {
     setRequestedCalls(prev => {
       const next = typeof updater === "function" ? updater(prev) : updater;
-      try { sessionStorage.setItem("requestedCalls", JSON.stringify(next)); } catch {}
+      try { sessionStorage.setItem("requestedCalls", JSON.stringify(next)); } catch { }
       return next;
     });
   }
@@ -54,7 +54,7 @@ export default function ConsultClient({ pandits, userPlan, username, userId, pro
           if (data.status === "FAILED" || data.status === "COMPLETED") {
             return panditId; // should be removed
           }
-        } catch {}
+        } catch { }
         return null;
       })
     ).then(toRemove => {
@@ -81,7 +81,7 @@ export default function ConsultClient({ pandits, userPlan, username, userId, pro
         isFreeCall: data.isFreeCall,
         planSecondsLeft: data.planSecondsLeft,
       });
-      ringtoneRef.current?.play().catch(() => {});
+      ringtoneRef.current?.play().catch(() => { });
     },
     "call-accepted": (data) => {
       ringtoneRef.current?.pause();
@@ -108,7 +108,7 @@ export default function ConsultClient({ pandits, userPlan, username, userId, pro
     const a = ringtoneRef.current;
     if (!a) return;
     a.muted = true;
-    a.play().then(() => { a.pause(); a.currentTime = 0; a.muted = false; }).catch(() => {});
+    a.play().then(() => { a.pause(); a.currentTime = 0; a.muted = false; }).catch(() => { });
   }
 
   async function handleRequestCall(pandit) {
@@ -201,9 +201,19 @@ export default function ConsultClient({ pandits, userPlan, username, userId, pro
             <div className="px-s16">
               <CallExpertsSection pandits={pandits} requestedCalls={requestedCalls} loadingId={loadingId} onRequestCall={handleRequestCall} userId={userId} />
             </div>
-            <div className="lg:hidden"><ConsultBottomSection userPlan={userPlan} /></div>
+            <div className="lg:hidden"><ConsultBottomSection 
+  userPlan={userPlan}
+  pandits={pandits}
+  onRequestCall={handleRequestCall}
+  loadingId={loadingId}
+/></div>
           </div>
-          <div className="hidden lg:block sticky top-[120px]"><ConsultBottomSection userPlan={userPlan} /></div>
+          <div className="hidden lg:block sticky top-[120px]"><ConsultBottomSection 
+  userPlan={userPlan}
+  pandits={pandits}
+  onRequestCall={handleRequestCall}
+  loadingId={loadingId}
+/></div>
         </div>
       </div>
 

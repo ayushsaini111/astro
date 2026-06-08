@@ -2,37 +2,39 @@
 
 import React from "react";
 import Image from "next/image";
-
+import { useRouter } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 
 function RemedyHeroCard({
   title = "Feeling mentally exhausted lately?",
-
   description = "Simple spiritual practices may help restore calmness and clarity.",
-
   image = "/Remedies/remedy-1.png",
-
   overlay = "from-[#7A4FB1]/40 via-[#5C2B83]/30 to-black/70",
-
   titleColor = "text-white",
-
   descriptionColor = "text-white/90",
 }) {
+  const router = useRouter();
+
+  // ✅ Add back button handler
+  const handleBack = () => {
+    if (typeof window !== "undefined" && window.history.length > 1) {
+      router.back();
+    } else {
+      router.push("/remedies");
+    }
+  };
+
   return (
     <section className="">
-
       <div
         className="
           relative
-
           min-h-[290px]
           lg:min-h-[340px]
-
           rounded-b-r40
           overflow-hidden
         "
       >
-
         {/* IMAGE */}
         <Image
           src={image}
@@ -47,33 +49,29 @@ function RemedyHeroCard({
           className={`
             absolute
             inset-0
-
             bg-gradient-to-b
-
             ${overlay}
           `}
         />
 
-        {/* BACK */}
+        {/* BACK BUTTON - ✅ Now with onClick */}
         <button
+          onClick={handleBack}
           className="
             absolute
             top-s16
             left-s16
-
             z-20
-
             w-s40
             h-s40
-
             rounded-full
-
             bg-black/10
             backdrop-blur-md
-
             flex
             items-center
             justify-center
+            hover:bg-black/20
+            transition-colors
           "
         >
           <ArrowLeft
@@ -87,32 +85,22 @@ function RemedyHeroCard({
           className="
             relative
             z-10
-
             h-full
-
             flex
             flex-col
             justify-end
-
             gap-s16
-pt-s64 md:pt-s104
+            pt-s64 md:pt-s104
             px-s24
             lg:p-s40
           "
         >
-
           {/* TITLE */}
           <h1
             className={`
               heading-h3
-
-             
-
               max-w-[240px]
               lg:max-w-[520px]
-
-          
-
               ${titleColor}
             `}
           >
@@ -122,21 +110,16 @@ pt-s64 md:pt-s104
           {/* DESCRIPTION */}
           <p
             className={`
-             body-default
-
+              body-default
               max-w-[240px]
               lg:max-w-[520px]
-
               ${descriptionColor}
             `}
           >
             {description}
           </p>
-
         </div>
-
       </div>
-
     </section>
   );
 }

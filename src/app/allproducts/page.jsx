@@ -1,40 +1,132 @@
-import React from "react";
+"use client";
+
+import React, { useState, useEffect } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
 
 import ProductsHeader from "@/components/ProductsHeader";
-import CeremonyHeroSection from "@/components/products/HeroSection";
+import HeroSection from "@/components/products/HeroSection";
 import ProductsSection from "@/components/products/ProductsSection";
 
+import { ALL_PRODUCTS, PRODUCT_CATEGORIES } from "@/data/products";
+
 export default function ProductsPage() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const [filteredProducts, setFilteredProducts] = useState(ALL_PRODUCTS);
+  const [showFilters, setShowFilters] = useState(false);
+
+  // Get current filters from URL
+  const currentCategory = searchParams.get("category") || "All";
+  const currentSearch = searchParams.get("search") || "";
+  const currentSort = searchParams.get("sort") || "popularity";
+
+  // Filter and sort products
+  useEffect(() => {
+    let filtered = [...ALL_PRODUCTS];
+
+    // Apply category filter
+    if (currentCategory !== "All") {
+      filtered = filtered.filter(product => product.category === currentCategory);
+    }
+
+    // Apply search filter
+    if (currentSearch) {
+      const searchLower = currentSearch.toLowerCase();
+      filtered = filtered.filter(product =>
+        product.title.toLowerCase().includes(searchLower) ||
+        product.description.toLowerCase().includes(searchLower) ||
+        product.category.toLowerCase().includes(searchLower)
+      );
+    }
+
+    // Apply sorting
+    switch (currentSort) {
+      case "price-low":
+        filtered.sort((a, b) => a.price - b.price);
+        break;
+      case "price-high":
+        filtered.sort((a, b) => b.price - a.price);
+        break;
+      case "rating":
+        filtered.sort((a, b) => b.rating - a.rating);
+        break;
+      case "newest":
+        filtered.sort((a, b) => b.id - a.id);
+        break;
+      case "popularity":
+      default:
+        filtered.sort((a, b) => b.reviews - a.reviews);
+        break;
+    }
+
+    setFilteredProducts(filtered);
+  }, [currentCategory, currentSearch, currentSort]);
+
+  // Handle category change
+  const handleCategoryChange = (category) => {
+    const params = new URLSearchParams(searchParams);
+    
+    if (category === "All") {
+      params.delete("category");
+    } else {
+      params.set("category", category);
+    }
+    
+    router.push(`?${params.toString()}`);
+  };
+
+  // Handle sort change
+  const handleSortChange = (sortValue) => {
+    const params = new URLSearchParams(searchParams);
+    
+    if (sortValue === "popularity") {
+      params.delete("sort");
+    } else {
+      params.set("sort", sortValue);
+    }
+    
+    router.push(`?${params.toString()}`);
+  };
+
+  // Clear all filters
+  const clearAllFilters = () => {
+    router.push(window.location.pathname);
+    setShowFilters(false);
+  };
+
+  const hasActiveFilters = currentCategory !== "All" || currentSearch;
+
   return (
-    <main
-      className="
-        min-h-screen
-         max-w-7xl
-        flex mx-auto
-        flex-col
-        gap-s32
-        pb-s40
-      "
-    >
-
+    <main className="min-h-screen max-w-7xl flex mx-auto flex-col gap-s32 pb-s40">
       
-            {/* HEADER */}
-            <ProductsHeader
-              title="All Products"
-              showTabs={true}
-              tabs={[
-                "All",
-                "Rudraksha",
-                "Gemstones",
-                "Bracelets",
-              ]}
-              activeTab="All"
-            />
+      {/* HEADER */}
+      <ProductsHeader
+        title="All Products"
+        subtitle={`${filteredProducts.length} products available`}
+        showSubtitle={true}
+        searchPlaceholder="Search products..."
+        searchValue={currentSearch}
+        showFilters={showFilters}
+        setShowFilters={setShowFilters}
+        hasActiveFilters={hasActiveFilters}
+        currentCategory={currentCategory}
+        onCategoryChange={handleCategoryChange}
+        categories={PRODUCT_CATEGORIES}
+        currentSort={currentSort}
+        onSortChange={handleSortChange}
+        onClearAll={clearAllFilters}
+      />
 
-      <CeremonyHeroSection />
+      {/* HERO */}
+      <HeroSection />
 
-      <ProductsSection />
-
+      {/* PRODUCTS */}
+      <ProductsSection
+        products={filteredProducts}
+        currentCategory={currentCategory}
+        currentSearch={currentSearch}
+        onClearFilters={clearAllFilters}
+      />
     </main>
   );
 }

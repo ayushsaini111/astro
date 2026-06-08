@@ -4,130 +4,141 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 
 export default function UsernamePage() {
+  const [step, setStep] = useState(1); // 1 = username, 2 = dob
   const [username, setUsername] = useState("");
   const [dob, setDob] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const router = useRouter();
 
-async function handleSubmit() {
-  if (username.trim().length < 3) {
-    setError("Username must be at least 3 characters");
-    return;
-  }
-  if (!dob) {
-    setError("Date of birth is required");
-    return;
-  }
-
-  setLoading(true);
-  setError("");
-
-  try {
-    const res = await fetch("/api/auth/set-username", {
-      method: "POST",
-      credentials: "include", // ✅ sends cookies
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ username, dob }),
-    });
-
-    const data = await res.json();
-
-    if (!res.ok) {
-      setError(data.error ?? "Something went wrong");
-      setLoading(false);
+  function handleUsernameNext() {
+    if (username.trim().length < 3) {
+      setError("Username must be at least 3 characters");
       return;
     }
-
-    // ✅ Redirect based on where they came from
-    const redirectTo = new URLSearchParams(window.location.search).get("from");
-    router.push(redirectTo ?? "/home");
-
-  } catch (err) {
-    setError("Network error. Try again.");
-    setLoading(false);
+    setError("");
+    setStep(2);
   }
-}
-return (
-  <div className="min-h-screen bg-background flex items-center justify-center px-4">
 
-    <div className="w-full max-w-sm sm:max-w-md bg-secondary-main rounded-[var(--R24)] px-6 py-10 text-center shadow-sm">
+  async function handleSubmit(skipDob = false) {
+    setLoading(true);
+    setError("");
 
-      {/* Title */}
-      <h1 className="heading-h2 text-main">
-        What should we call you?
-      </h1>
+    try {
+      const res = await fetch("/api/auth/set-username", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          username,
+          dob: skipDob ? null : dob || null,
+        }),
+      });
 
-      <p className="body-default text-secondary mt-3">
-        This helps us personalize your experience.
-      </p>
+      const data = await res.json();
 
-      {/* Username */}
-      <div className="mt-6 text-left">
-        <label className="caption text-secondary mb-1 block">
-          Your name
-        </label>
+      if (!res.ok) {
+        setError(data.error ?? "Something went wrong");
+        setLoading(false);
+        return;
+      }
 
-        <input
-          type="text"
-          placeholder="Enter your username"
-          value={username}
-          onChange={(e) => {
-            setError("");
-            setUsername(e.target.value.toLowerCase().replace(/\s/g, "_"));
-          }}
-          className="w-full border border-black rounded-[var(--R16)] px-4 py-3 bg-transparent outline-none"
-        />
+      const redirectTo = new URLSearchParams(window.location.search).get("from");
+      router.push(redirectTo ?? "/");
+
+    } catch {
+      setError("Network error. Try again.");
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="min-h-screen bg-background flex items-center justify-center px-4">
+      <div className="w-full max-w-sm sm:max-w-md bg-secondary-main rounded-[var(--R24)] px-6 py-10 text-center shadow-sm">
+
+        {step === 1 ? (
+          <>
+            <h1 className="heading-h2 text-main">
+              What should we<br />call you?
+            </h1>
+
+            <p className="body-default text-secondary mt-3">
+              This helps us personalize your experience.
+            </p>
+
+            <div className="mt-6 text-left">
+              <label className="caption text-secondary mb-1 block">Your name</label>
+              <input
+                type="text"
+                placeholder="Enter your username"
+                value={username}
+                onChange={(e) => {
+                  setError("");
+                  setUsername(e.target.value.toLowerCase().replace(/\s/g, "_"));
+                }}
+                className="w-full border border-black rounded-[var(--R16)] px-4 py-3 bg-transparent outline-none"
+              />
+            </div>
+
+            {error && <p className="text-xs text-red-main mt-3 text-left">{error}</p>}
+
+            <button
+              onClick={handleUsernameNext}
+              className="mt-6 w-full cursor-pointer bg-primary-main text-white py-3 rounded-[var(--R16)]"
+            >
+              Continue
+            </button>
+          </>
+
+        ) : (
+          <>
+            <p className="caption text-secondary tracking-widest uppercase">Improve Accuracy</p>
+
+            <h1 className="heading-h2 text-main mt-3">
+              Add your birth date
+            </h1>
+
+            <p className="body-default text-secondary mt-3">
+              This helps us generate insights that are just for you.
+            </p>
+
+            <div className="mt-6 text-left">
+              <label className="caption text-secondary mb-1 block">Date of birth</label>
+              <input
+                type="date"
+                value={dob}
+                max={new Date().toISOString().split("T")[0]}
+                onChange={(e) => {
+                  setError("");
+                  setDob(e.target.value);
+                }}
+                className="w-full border border-black rounded-[var(--R16)] px-4 py-3 bg-transparent outline-none"
+              />
+            </div>
+
+            {error && <p className="text-xs text-red-main mt-3 text-left">{error}</p>}
+
+            <button
+              onClick={() => handleSubmit(false)}
+              disabled={loading || !dob}
+              className="mt-6 w-full cursor-pointer bg-primary-main text-white py-3 rounded-[var(--R16)] disabled:opacity-50"
+            >
+              {loading ? "Saving..." : "Continue"}
+            </button>
+
+            <button
+              onClick={() => handleSubmit(true)}
+              disabled={loading}
+              className="mt-3 w-full cursor-pointer text-secondary py-2 text-sm underline"
+            >
+              Skip for now
+            </button>
+          </>
+        )}
+
+        <div className="mt-6 border-t border-black/40" />
+        <p className="caption text-secondary mt-3">Talk to an expert</p>
+
       </div>
-
-      {/* DOB */}
-      <div className="mt-4 text-left">
-        <label className="caption text-secondary mb-1 block">
-          When were you born?
-        </label>
-
-        <input
-          type="date"
-          value={dob}
-          max={new Date().toISOString().split("T")[0]}
-          onChange={(e) => {
-            setError("");
-            setDob(e.target.value);
-          }}
-          className="w-full border border-black rounded-[var(--R16)] px-4 py-3 bg-transparent outline-none"
-        />
-      </div>
-
-      {/* Error */}
-      {error && (
-        <p className="text-xs text-red-main mt-3 text-left">{error}</p>
-      )}
-
-      {/* Button */}
-      <button
-        onClick={handleSubmit}
-        disabled={loading}
-        className="mt-6 w-full cursor-pointer bg-primary-main text-white py-3 rounded-[var(--R16)] disabled:opacity-50"
-      >
-        {loading ? "Saving..." : "Continue"}
-      </button>
-
-      {/* Divider */}
-      <div className="mt-6 border-t border-black/40"></div>
-
-      <p className="caption text-secondary mt-3">
-        Talk to an expert
-      </p>
-
-      {/* Secondary action */}
-      <button
-        onClick={() => router.push("/login")}
-        className="mt-4 text-sm text-secondary underline"
-      >
-        Use a different account
-      </button>
-
     </div>
-  </div>
-);
+  );
 }

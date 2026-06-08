@@ -58,40 +58,54 @@ export default function LoginPage() {
     }
   }
 
-  async function handleVerifyOtp() {
+async function handleVerifyOtp() {
   const code = otp.join("");
-  if (code.length !== 6) {
-    setError("Enter full 6-digit OTP");
-    return;
-  }
+  if (code.length !== 6) { setError("Enter full 6-digit OTP"); return; }
+
   setLoading(true);
   setError("");
 
   try {
+    // 1. Twilio verifies OTP, get back a short-lived token
     const res = await fetch("/api/auth/verify-otp", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ phone, otp: code }),
     });
 
-    // ✅ Move loading to false here
-    setLoading(false);
-
     if (!res.ok) {
-      // Try to get error message, fallback to generic if JSON fails
-      const errorData = await res.json().catch(() => ({}));
-      setError(errorData.error || "Invalid OTP. Try again.");
+      const data = await res.json().catch(() => ({}));
+      setError(data.error || "Invalid OTP. Try again.");
+      setLoading(false);
       return;
     }
 
-    const data = await res.json();
-    router.push(data.redirect);
+    const { verifiedToken, redirect } = await res.json();
+
+    // 2. Create NextAuth session
+    const result = await signIn("credentials", {
+      phone,
+      token: verifiedToken,
+      redirect: false,
+    });
+
+    setLoading(false);
+
+    if (result?.error) {
+      setError("Session creation failed. Try again.");
+      return;
+    }
+
+    // 3. Redirect — respect ?callbackUrl if present
+    const params = new URLSearchParams(window.location.search);
+    const callbackUrl = params.get("callbackUrl") || redirect || "/";
+    router.push(callbackUrl);
+
   } catch (err) {
     setLoading(false);
     setError("Something went wrong. Please try again.");
   }
 }
-
   function handleOtpInput(index, value) {
     if (!/^\d*$/.test(value)) return;
     const updated = [...otp];

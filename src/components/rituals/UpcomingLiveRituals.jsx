@@ -1,6 +1,7 @@
 'use client'
 
 import React, { useRef, useState } from "react";
+import { useRouter } from "next/navigation"; // ✅ Add router import
 import Image from "next/image";
 import Button from "@/components/ui/Button";
 
@@ -11,6 +12,7 @@ function UpcomingLiveRituals({
 
   const sliderRef = useRef(null);
   const [activeIndex, setActiveIndex] = useState(0);
+  const router = useRouter(); // ✅ Initialize router
 
   const handleScroll = () => {
 
@@ -23,6 +25,11 @@ function UpcomingLiveRituals({
     const index = Math.round(scrollLeft / cardWidth);
 
     setActiveIndex(index);
+  };
+
+  // ✅ Add coming soon handler
+  const handleComingSoon = () => {
+    router.push("/coming-soon");
   };
 
   return (
@@ -122,11 +129,14 @@ function UpcomingLiveRituals({
                   {ritual.date}
                 </p>
 
+                {/* ✅ Updated button with coming soon */}
                 <Button
                   variant="primary"
+                  onClick={handleComingSoon} // ✅ Add click handler
                   className="
                     !bg-[#6E2B75]
                     hover:!bg-[#7E3D86]
+                    cursor-pointer
                   "
                 >
                   {ritual.buttonText}

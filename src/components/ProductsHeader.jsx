@@ -5,7 +5,6 @@ import {
   ArrowLeft,
   Search,
   SlidersHorizontal,
-  Heart,
   X,
 } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -14,32 +13,22 @@ function ProductsHeader({
   title = "All Products",
   subtitle,
   showSubtitle = false,
-  showTabs = false,
-  tabs = [],
-  activeTab = "All",
   searchPlaceholder = "Search products...",
   searchValue = "",
-  currentParams = {},
+  showFilters = false,
+  setShowFilters,
+  hasActiveFilters = false,
+  currentCategory = "All",
+  onCategoryChange,
+  categories = [],
+  currentSort = "popularity",
+  onSortChange,
+  onClearAll,
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [searchInput, setSearchInput] = useState(searchValue);
-  const [showFilters, setShowFilters] = useState(false);
 
-  // ✅ Handle tab click
-  const handleTabClick = (tab) => {
-    const params = new URLSearchParams(searchParams);
-    
-    if (tab === "All") {
-      params.delete("category");
-    } else {
-      params.set("category", tab);
-    }
-    
-    router.push(`?${params.toString()}`);
-  };
-
-  // ✅ Handle search
   const handleSearch = (value) => {
     const params = new URLSearchParams(searchParams);
     
@@ -52,13 +41,6 @@ function ProductsHeader({
     router.push(`?${params.toString()}`);
   };
 
-  // ✅ Clear all filters
-  const clearAllFilters = () => {
-    setSearchInput("")
-    router.push(window.location.pathname);
-  };
-
-  // ✅ Debounced search
   useEffect(() => {
     const timer = setTimeout(() => {
       if (searchInput !== searchValue) {
@@ -69,8 +51,9 @@ function ProductsHeader({
     return () => clearTimeout(timer);
   }, [searchInput]);
 
-  // ✅ Check if any filters are active
-  const hasActiveFilters = searchInput || activeTab !== "All";
+  useEffect(() => {
+    setSearchInput(searchValue);
+  }, [searchValue]);
 
   return (
     <header className="flex flex-col gap-s24 px-s16 pt-s16 lg:px-s32 lg:pt-s24">
@@ -91,14 +74,13 @@ function ProductsHeader({
           )}
         </div>
 
-        <button className="w-s40 h-s40 lg:w-s48 lg:h-s48 rounded-full border border-[#D8C3E0] flex items-center justify-center bg-[#F5EEE7] hover:bg-[#F0E3DC] transition-colors">
-          <Heart size={18} className="text-[#8A5AB8]" />
-        </button>
+        {/* Empty spacer for alignment */}
+        <div className="w-s40 h-s40" />
       </div>
 
       {/* SEARCH BAR */}
       <div className="flex gap-s16">
-        <div className="flex-1 h-s48 lg:h-s56 rounded-full border border-[#BFAE9D] bg-[#F7EFE8] px-s16 flex items-center gap-s8">
+        <div className="flex-1 h-s48 lg:h-s56 rounded-full border border-[#BFAE9D] bg-[#F7EFE8] px-s16 flex items-center gap-s8 focus-within:border-[#8A5AB8]">
           <Search size={18} className="text-secondary" />
           
           <input
@@ -109,7 +91,6 @@ function ProductsHeader({
             className="flex-1 bg-transparent outline-none text-sm lg:text-base placeholder:text-secondary"
           />
           
-          {/* Clear search */}
           {searchInput && (
             <button
               onClick={() => setSearchInput("")}
@@ -124,11 +105,11 @@ function ProductsHeader({
         <button
           onClick={() => setShowFilters(!showFilters)}
           className={`
-            w-s48 h-s48 lg:w-s56 lg:h-s56 rounded-full border border-[#BFAE9D] 
-            flex items-center justify-center transition-colors
+            w-s48 h-s48 lg:w-s56 lg:h-s56 rounded-full border 
+            flex items-center justify-center transition-all
             ${showFilters || hasActiveFilters 
               ? "bg-[#8A5AB8] border-[#8A5AB8]" 
-              : "bg-[#F7EFE8] hover:bg-[#F0E3DC]"
+              : "border-[#BFAE9D] bg-[#F7EFE8] hover:bg-[#F0E3DC]"
             }
           `}
         >
@@ -156,66 +137,79 @@ function ProductsHeader({
             </div>
           )}
           
-          {activeTab !== "All" && (
-            <div className="flex items-center gap-s8 px-s16 py-s8 bg-[#8A5AB8]/10 rounded-full">
-              <span className="text-sm text-[#8A5AB8]">{activeTab}</span>
+          {currentCategory !== "All" && (
+            <div className="flex items-center gap-s4 px-s16 py-s8 bg-[#8A5AB8]/10 rounded-full">
+              <span className="text-sm text-[#8A5AB8]">{currentCategory}</span>
               <button
-                onClick={() => handleTabClick("All")}
+                onClick={() => onCategoryChange("All")}
                 className="p-1 hover:bg-[#8A5AB8]/20 rounded-full"
               >
                 <X size={12} className="text-[#8A5AB8]" />
               </button>
             </div>
           )}
-          
-          {/* <button
-            onClick={clearAllFilters}
-            className="text-sm text-[#8A5AB8] hover:underline"
-          >
-            Clear All
-          </button> */}
         </div>
       )}
 
-      {/* TABS */}
-      {showTabs && (showFilters || !hasActiveFilters) && (
-        <div className="flex items-center gap-s8 overflow-x-auto hide-scrollbar">
-          {tabs.map((tab) => (
-            <button
-              key={tab}
-              onClick={() => handleTabClick(tab)}
-              className={`
-                px-s16 py-s8 rounded-full whitespace-nowrap text-sm lg:text-base transition-all
-                ${
-                  activeTab === tab
-                    ? "bg-[#8A5AB8] text-white shadow-sm"
-                    : "bg-[#F2E7DE] text-secondary hover:bg-[#E8D5CC]"
-                }
-              `}
-            >
-              {tab}
-            </button>
-          ))}
-        </div>
-      )}
+      {/* FILTER PANEL */}
+      {showFilters && (
+        <div className="bg-[#F7EFE8] rounded-r20 p-s16 border border-[#E0D4E3]">
+          <div className="flex flex-col gap-s16">
+            
+            {/* Category Filter */}
+            <div>
+              <h4 className="body-small font-medium text-main mb-s16">Category</h4>
+              <div className="flex flex-wrap gap-s8">
+                {categories.map((cat) => (
+                  <button
+                    key={cat}
+                    onClick={() => onCategoryChange(cat)}
+                    type="button"
+                    className={`px-s16 py-s8 rounded-full text-sm font-medium transition-all ${
+                      currentCategory === cat
+                        ? "bg-[#8A5AB8] text-white"
+                        : "bg-white border border-[#E0D4E3] text-main hover:border-[#8A5AB8]"
+                    }`}
+                  >
+                    {cat}
+                  </button>
+                ))}
+              </div>
+            </div>
 
-      {/* FILTER PANEL (Optional Advanced Filters) */}
-      {showFilters && hasActiveFilters && (
-        <div className="bg-[#F7EFE8] rounded-r24 p-s16 border border-[#BFAE9D]">
-          <div className="flex items-center justify-between mb-s12">
-            <h3 className="text-sm font-medium text-main">Filters</h3>
-            <button
-              onClick={() => setShowFilters(false)}
-              className="p-1 hover:bg-black/10 rounded-full"
-            >
-              <X size={16} className="text-secondary" />
-            </button>
-          </div>
-          
-          <div className="text-sm text-secondary">
-            {searchInput && `Search: "${searchInput}"`}
-            {searchInput && activeTab !== "All" && " • "}
-            {activeTab !== "All" && `Category: ${activeTab}`}
+            {/* Sort Filter */}
+            <div>
+              <h4 className="body-small font-medium text-main mb-s16">Sort by</h4>
+              <select
+                value={currentSort}
+                onChange={(e) => onSortChange(e.target.value)}
+                className="w-full px-s16 py-s8 border border-[#E0D4E3] rounded-r12 bg-white text-sm focus:outline-none focus:border-[#8A5AB8]"
+              >
+                <option value="popularity">Popularity</option>
+                <option value="price-low">Price: Low to High</option>
+                <option value="price-high">Price: High to Low</option>
+                <option value="rating">Highest Rated</option>
+                <option value="newest">Newest First</option>
+              </select>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="flex gap-s16">
+              <button
+                onClick={() => setShowFilters(false)}
+                type="button"
+                className="flex-1 px-s16 py-s8 border border-[#E0D4E3] rounded-r16 text-main font-medium hover:bg-white transition-colors"
+              >
+                Close
+              </button>
+              <button
+                onClick={onClearAll}
+                type="button"
+                className="flex-1 px-s16 py-s8 bg-[#8A5AB8] text-white rounded-r16 font-medium hover:bg-[#7A4AA8] transition-colors"
+              >
+                Reset Filters
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -1,9 +1,18 @@
+"use client";
+
 import React from "react";
+import { useRouter } from "next/navigation";
 import Image from "next/image";
 
 import Button from "@/components/ui/Button";
 
 function CeremonyHeroSection() {
+  const router = useRouter();
+
+  const handleBookCeremony = () => {
+    router.push("/ceremonies/cermony");
+  };
+
   return (
     <section className="px-s16 lg:px-0">
 
@@ -78,7 +87,7 @@ function CeremonyHeroSection() {
               "
             >
 
-              Arrange ceremoniesat home{" "}
+              Arrange ceremonies at home{" "}
 
               <span className="text-[#8A5AB8]">
                 effortlessly
@@ -115,6 +124,7 @@ function CeremonyHeroSection() {
           <div className="pt-s24 md:pt-s40">
 
             <Button
+              onClick={handleBookCeremony}
               variant="primary"
               className="
                 !rounded-r32

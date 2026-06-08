@@ -1,7 +1,11 @@
+"use client";
 import React from "react";
 import Button from "@/components/ui/Button";
+import { useRouter } from "next/navigation";
 
 function HeroCard() {
+    const router = useRouter();
+  
   return (
     <section
       className="
@@ -42,6 +46,7 @@ function HeroCard() {
         </p>
 
         <Button
+         onClick={() => router.push("/ritualPackages")}
           variant="secondary"
           className="!bg-[#CDA85F] !text-white"
         >

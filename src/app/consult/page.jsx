@@ -2,45 +2,30 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
-import { cookies } from "next/headers";
 import ConsultClient from "@/components/consult/ConsultClient";
 
 export default async function ConsultPage() {
-  const cookieStore = await cookies();
-  const userId = cookieStore.get("userId")?.value;
   const session = await getServerSession(authOptions);
 
-  let user = null;
+  if (!session?.user) redirect("/login");
+  if (session.user.role === "pandit") redirect("/pandit");
 
-  if (userId) {
-    user = await prisma.user.findUnique({
-      where: { id: userId },
-      include: {
-        plans: {
-          where: { endDate: { gte: new Date() }, remainingSeconds: { gt: 0 } },
-          include: { plan: true },
-          take: 1,
-        },
+  // Google users have email, OTP users have id from JWT
+  const user = await prisma.user.findUnique({
+    where: session.user.email
+      ? { email: session.user.email }
+      : { id: session.user.id },
+    include: {
+      plans: {
+        where: { endDate: { gte: new Date() }, remainingSeconds: { gt: 0 } },
+        include: { plan: true },
+        take: 1,
       },
-    });
-  }
-
-  if (!user && session?.user?.email) {
-    if (session.user.role === "pandit") redirect("/pandit");
-    user = await prisma.user.findUnique({
-      where: { email: session.user.email },
-      include: {
-        plans: {
-          where: { endDate: { gte: new Date() }, remainingSeconds: { gt: 0 } },
-          include: { plan: true },
-          take: 1,
-        },
-      },
-    });
-  }
+    },
+  });
 
   if (!user) redirect("/login");
-  if (!user.username || !user.dob) redirect("/username");
+  if (!user.username ) redirect("/username");
 
   const pandits = await prisma.pandit.findMany({
     where: { isAvailable: true },

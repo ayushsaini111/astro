@@ -119,7 +119,7 @@ mx-auto md:mx-0
           {/* Button */}
           <Button
             variant="primary"
-            onClick={() => router.push("/consultation")}
+            onClick={() => router.push("/consult")}
             className="
               !rounded-r32
 

@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import { useRouter } from "next/navigation"; // ✅ Add router import
 import Image from "next/image";
 
 import {
@@ -12,6 +13,17 @@ function RitualPackagesGrid({
   sectionTitle = "All Packages",
   rituals = [],
 }) {
+  const router = useRouter(); // ✅ Initialize router
+
+  // ✅ Handle Learn More click
+  const handleLearnMore = (e, ritualId) => {
+    e.stopPropagation();
+    e.preventDefault();
+    
+    console.log("Navigating to ritual:", ritualId); // Debug log
+    router.push(`/rituals/${ritualId}`);
+  };
+
   return (
     <section
       className="
@@ -46,7 +58,7 @@ function RitualPackagesGrid({
           {sectionTitle}
         </h3>
 
-        <button
+        {/* <button
           className="
             flex
             items-center
@@ -62,7 +74,7 @@ function RitualPackagesGrid({
 
           <ChevronDown size={14} />
 
-        </button>
+        </button> */}
 
       </div>
 
@@ -178,8 +190,10 @@ function RitualPackagesGrid({
                 {item.description}
               </p>
 
-              {/* CTA */}
+              {/* ✅ FIXED CTA */}
               <button
+                onClick={(e) => handleLearnMore(e, item.id)} // ✅ Add click handler
+                type="button" // ✅ Add button type
                 className="
                   group/link
 
@@ -194,6 +208,10 @@ function RitualPackagesGrid({
                   text-primary-light
 
                   mt-s2
+
+                  hover:opacity-80
+                  transition-opacity
+                  duration-200
                 "
               >
 
