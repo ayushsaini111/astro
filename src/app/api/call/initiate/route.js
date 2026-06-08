@@ -28,7 +28,6 @@ export async function POST(req) {
     prisma.freeCallUsage.findUnique({ where: { userId } }),
     prisma.userPlan.findFirst({
       where: { userId, isActive: true, endDate: { gte: now }, remainingSeconds: { gt: 0 } },
-      // ✅ FIX: select ALL fields needed for daily limit check
       select: {
         id: true,
         remainingSeconds: true,
@@ -41,7 +40,8 @@ export async function POST(req) {
   ]);
 
   if (!user) return NextResponse.json({ error: "User not found" }, { status: 404 });
-  if (!user.username || !user.dob) return NextResponse.json({ error: "INCOMPLETE_PROFILE" }, { status: 403 });
+  // DOB condition removed — only username is required
+  if (!user.username) return NextResponse.json({ error: "INCOMPLETE_PROFILE" }, { status: 403 });
 
   const hasFreeCall = !freeUsage;
   if (!hasFreeCall && !activePlan) {
@@ -53,14 +53,13 @@ export async function POST(req) {
       ? new Date(activePlan.lastUsedDate.toDateString())
       : null;
 
-    // ✅ FIX: reset perDayUsedSeconds if last use was before today
     const isNewDay = !lastUsedDate || lastUsedDate < today;
     if (isNewDay && activePlan.perDayUsedSeconds > 0) {
       await prisma.userPlan.update({
         where: { id: activePlan.id },
         data: { perDayUsedSeconds: 0, lastUsedDate: null },
       });
-      activePlan.perDayUsedSeconds = 0; // update local ref too
+      activePlan.perDayUsedSeconds = 0;
     }
 
     const dailyUsed = isNewDay ? 0 : activePlan.perDayUsedSeconds;

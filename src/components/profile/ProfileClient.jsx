@@ -35,6 +35,7 @@ export default function ProfileClient({ user: initialUser }) {
   const [form, setForm] = useState({
     username: user.username ?? "",
     phone:    user.phone    ?? "",
+    email:    user.email    ?? "",
     dob:      user.dob ? user.dob.slice(0, 10) : "",
     gender:   user.gender   ?? "",
     address:  user.address  ?? "",
@@ -51,6 +52,7 @@ export default function ProfileClient({ user: initialUser }) {
     setForm({
       username: user.username ?? "",
       phone:    user.phone    ?? "",
+      email:    user.email    ?? "",
       dob:      user.dob ? user.dob.slice(0, 10) : "",
       gender:   user.gender   ?? "",
       address:  user.address  ?? "",
@@ -70,14 +72,18 @@ export default function ProfileClient({ user: initialUser }) {
         body: JSON.stringify(form),
       });
       const data = await res.json();
-      if (!res.ok) { setSaveError(data.error ?? "Failed to save"); return; }
+      if (!res.ok) { 
+        setSaveError(data.error ?? "Failed to save"); 
+        return; 
+      }
 
-      // Update local state immediately — no page reload needed
+      // Update local state immediately
       setUser(prev => ({
         ...prev,
         username: form.username || prev.username,
         phone:    form.phone    || prev.phone,
-        dob:      form.dob      ? new Date(form.dob).toISOString() : prev.dob,
+        email:    form.email    || prev.email,
+        dob:      form.dob ? new Date(form.dob).toISOString() : prev.dob,
         gender:   form.gender   || prev.gender,
         address:  form.address  || prev.address,
       }));
@@ -128,7 +134,7 @@ export default function ProfileClient({ user: initialUser }) {
           </div>
         </div>
 
-        {/* ── EDIT FORM (inline, no redirect) ── */}
+        {/* ── EDIT FORM ── */}
         {editing && (
           <div className="bg-white rounded-[20px] p-s24 shadow-sm border border-[#C39BD3]/40 flex flex-col gap-s16">
             <h3 className="body-default font-semibold text-main">Edit Profile</h3>
@@ -153,12 +159,13 @@ export default function ProfileClient({ user: initialUser }) {
               </div>
             </div>
 
-            {/* Text fields */}
+            {/* ✅ Text fields - ADDED EMAIL FIELD */}
             {[
-              { key: "username", label: "Username",     type: "text", placeholder: "your_username" },
-              { key: "phone",    label: "Phone",        type: "tel",  placeholder: "+91 98765 43210" },
-              { key: "dob",      label: "Date of Birth",type: "date", placeholder: "" },
-              { key: "address",  label: "Address",      type: "text", placeholder: "Your full address" },
+              { key: "username", label: "Username",     type: "text",  placeholder: "your_username" },
+              { key: "email",    label: "Email",        type: "email", placeholder: "your@email.com" },
+              { key: "phone",    label: "Phone",        type: "tel",   placeholder: "+91 98765 43210" },
+              { key: "dob",      label: "Date of Birth",type: "date",  placeholder: "" },
+              { key: "address",  label: "Address",      type: "text",  placeholder: "Your full address" },
             ].map(({ key, label, type, placeholder }) => (
               <div key={key} className="flex flex-col gap-s4">
                 <label className="text-xs font-medium text-secondary">{label}</label>
