@@ -33,6 +33,7 @@ export default function CeremoniesPage() {
           categories={["Career", "Finance", "Relationships"]}
           ritualsByCategory={ritualsByCategory}
         />
+        
         <CustomArrangementSection/>
         <GuidanceSection/>
       </div>

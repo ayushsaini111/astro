@@ -117,14 +117,14 @@ function PageHeader({
         </div>
 
         <div className="flex justify-center items-center gap-s16 md:hidden">
-          {showNotification && (
+          {/* {showNotification && (
             <button
               onClick={() => isLoggedIn ? router.push("/notifications") : router.push("/login")}
               className={`w-s40 h-s40 rounded-full border border-secondary flex items-center justify-center hover:bg-black/5 transition-colors ${notificationClassName}`}
             >
               🔔
             </button>
-          )}
+          )} */}
 
           {showProfile && (
             <button
