@@ -24,26 +24,25 @@ export const authOptions = {
         const record = await prisma.oTPVerification.findFirst({
           where: {
             identifier: phone,
-            otp: token,
-            verified: true,
-            expiresAt: { gt: new Date() },
+            otp:        token,
+            verified:   true,
+            expiresAt:  { gt: new Date() },
           },
           include: { user: true },
         });
 
         if (!record?.user) return null;
 
-        // Invalidate token immediately
         await prisma.oTPVerification.update({
           where: { id: record.id },
-          data: { expiresAt: new Date(0) },
+          data:  { expiresAt: new Date(0) },
         });
 
         return {
-          id:       record.user.id,
-          phone:    record.user.phone,
-          username: record.user.username ?? null,
-          role:     "user",
+          id:    record.user.id,
+          phone: record.user.phone,
+          role:  "user",
+          // ✅ do NOT cache username here — always read fresh from DB
         };
       },
     }),
@@ -52,14 +51,32 @@ export const authOptions = {
   session: { strategy: "jwt" },
 
   callbacks: {
-    async jwt({ token, user }) {
+    // ✅ jwt — only store stable identifiers, never cache username
+    async jwt({ token, user, trigger }) {
       if (user) {
-        token.id       = user.id;
-        token.phone    = user.phone    ?? null;
-        token.username = user.username ?? null;
-        token.role     = user.role     ?? "user";
-        token.email    = user.email    ?? null;
+        token.id    = user.id;
+        token.phone = user.phone ?? null;
+        token.role  = user.role  ?? "user";
+        token.email = user.email ?? null;
+        // ✅ intentionally NOT storing username — session reads it fresh from DB
       }
+
+      // ✅ When updateSession() is called client-side, re-fetch username from DB
+      if (trigger === "update") {
+        if (token.phone && !token.email) {
+          const dbUser = await prisma.user.findUnique({
+            where: { phone: token.phone },
+          });
+          token.username = dbUser?.username ?? null;
+        }
+        if (token.email) {
+          const dbUser = await prisma.user.findUnique({
+            where: { email: token.email },
+          });
+          token.username = dbUser?.username ?? null;
+        }
+      }
+
       return token;
     },
 
@@ -71,13 +88,23 @@ export const authOptions = {
           await prisma.pandit.upsert({
             where:  { email: user.email },
             update: { name: user.name ?? "Pandit", profilePic: user.image ?? null },
-            create: { email: user.email, name: user.name ?? "Pandit", profilePic: user.image ?? null, speciality: "Vedic Astrology" },
+            create: {
+              email:      user.email,
+              name:       user.name ?? "Pandit",
+              profilePic: user.image ?? null,
+              speciality: "Vedic Astrology",
+            },
           });
         } else {
           await prisma.user.upsert({
             where:  { email: user.email },
             update: { profilePic: user.image ?? null },
-            create: { email: user.email, username: null, isVerified: true, profilePic: user.image ?? null },
+            create: {
+              email:      user.email,
+              username:   null,
+              isVerified: true,
+              profilePic: user.image ?? null,
+            },
           });
         }
         return true;
@@ -87,35 +114,48 @@ export const authOptions = {
       }
     },
 
+    // ✅ session — always read username fresh from DB, never from stale JWT cache
     async session({ session, token }) {
-      session.user.id       = token.id       ?? null;
-      session.user.phone    = token.phone    ?? null;
-      session.user.username = token.username ?? null;
-      session.user.role     = token.role     ?? "user";
+      session.user.id    = token.id    ?? null;
+      session.user.phone = token.phone ?? null;
+      session.user.role  = token.role  ?? "user";
 
       // Google user
       if (token.email) {
         const isPandit = PANDIT_EMAILS.includes(token.email);
         if (isPandit) {
-          const pandit = await prisma.pandit.findUnique({ where: { email: token.email } });
+          const pandit = await prisma.pandit.findUnique({
+            where: { email: token.email },
+          });
           session.user.role     = "pandit";
           session.user.panditId = pandit?.id ?? null;
         } else {
-          const dbUser = await prisma.user.findUnique({ where: { email: token.email } });
+          const dbUser = await prisma.user.findUnique({
+            where: { email: token.email },
+          });
           session.user.id         = dbUser?.id         ?? token.id;
-          session.user.username   = dbUser?.username   ?? token.username;
+          session.user.username   = dbUser?.username   ?? null; // ✅ always fresh
           session.user.dob        = dbUser?.dob        ?? null;
           session.user.profilePic = dbUser?.profilePic ?? null;
+          session.user.phone      = dbUser?.phone      ?? null;
+          session.user.gender     = dbUser?.gender     ?? null;
+          session.user.address    = dbUser?.address    ?? null;
         }
       }
 
       // OTP user
       if (token.phone && !token.email) {
-        const dbUser = await prisma.user.findUnique({ where: { phone: token.phone } });
+        const dbUser = await prisma.user.findUnique({
+          where: { phone: token.phone },
+        });
         session.user.id         = dbUser?.id         ?? token.id;
-        session.user.username   = dbUser?.username   ?? token.username;
+        session.user.username   = dbUser?.username   ?? null; // ✅ always fresh
         session.user.phone      = dbUser?.phone      ?? token.phone;
         session.user.profilePic = dbUser?.profilePic ?? null;
+        session.user.dob        = dbUser?.dob        ?? null;
+        session.user.gender     = dbUser?.gender     ?? null;
+        session.user.address    = dbUser?.address    ?? null;
+        session.user.createdAt  = dbUser?.createdAt  ?? null;
       }
 
       return session;
