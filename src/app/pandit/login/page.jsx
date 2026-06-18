@@ -1,8 +1,9 @@
+// app/pandit/login/page.jsx
 "use client";
 
-import { signIn } from "next-auth/react";
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { signIn, getSession } from "next-auth/react";
+import { useState, useEffect } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import Image from "next/image";
 
 export default function PanditLoginPage() {
@@ -10,7 +11,36 @@ export default function PanditLoginPage() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [checkingSession, setCheckingSession] = useState(true);
+  
   const router = useRouter();
+  const searchParams = useSearchParams();
+  
+  // ✅ Get callback URL from search params
+  const callbackUrl = searchParams.get("callbackUrl") || "/pandit/dashboard";
+
+  // ✅ Check if already logged in as pandit
+  useEffect(() => {
+    const checkExistingSession = async () => {
+      try {
+        const session = await getSession();
+        console.log("🔍 Checking existing session:", session);
+        
+        if (session?.user?.role === "pandit") {
+          console.log("✅ Already logged in as pandit, redirecting to:", callbackUrl);
+          // Force navigation to avoid redirect loops
+          window.location.href = callbackUrl;
+          return;
+        }
+      } catch (err) {
+        console.error("❌ Session check error:", err);
+      } finally {
+        setCheckingSession(false);
+      }
+    };
+
+    checkExistingSession();
+  }, [callbackUrl]);
 
   async function handleLogin(e) {
     e.preventDefault();
@@ -22,22 +52,55 @@ export default function PanditLoginPage() {
     setLoading(true);
     setError("");
 
-    const result = await signIn("pandit-credentials", {
-      username,
-      password,
-      redirect: false,
-    });
+    try {
+      console.log("🔑 Attempting pandit login:", username);
 
-    setLoading(false);
+      const result = await signIn("pandit-credentials", {
+        username: username.trim(),
+        password: password.trim(),
+        redirect: false, // ✅ Handle redirect manually
+      });
 
-    if (result?.error) {
-      setError("Invalid username or password");
-      return;
+      console.log("📥 Login result:", result);
+
+      if (result?.error) {
+        setError("Invalid username or password");
+        setLoading(false);
+        return;
+      }
+
+      if (result?.ok) {
+        console.log("✅ Login successful!");
+        
+        // ✅ Wait a moment for session to be set, then redirect
+        setTimeout(() => {
+          console.log("🔄 Redirecting to:", callbackUrl);
+          window.location.href = callbackUrl;
+        }, 100);
+        
+        return;
+      }
+
+      // Fallback
+      setError("Login failed. Please try again.");
+    } catch (err) {
+      console.error("❌ Login error:", err);
+      setError("An error occurred. Please try again.");
+    } finally {
+      setLoading(false);
     }
+  }
 
-    const params = new URLSearchParams(window.location.search);
-    const callbackUrl = params.get("callbackUrl") || "/pandit/dashboard";
-    router.push(callbackUrl);
+  // ✅ Show loading while checking session
+  if (checkingSession) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-8 h-8 border-2 border-primary-main border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-secondary">Checking login status...</p>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -65,8 +128,11 @@ export default function PanditLoginPage() {
                 setError("");
                 setUsername(e.target.value);
               }}
-              className="bg-transparent outline-none w-full"
+              className="bg-transparent outline-none w-full text-main placeholder:text-secondary"
+              placeholder="Enter your username"
               autoComplete="username"
+              disabled={loading}
+              required
             />
           </div>
 
@@ -81,17 +147,24 @@ export default function PanditLoginPage() {
                 setError("");
                 setPassword(e.target.value);
               }}
-              className="bg-transparent outline-none w-full"
+              className="bg-transparent outline-none w-full text-main placeholder:text-secondary"
+              placeholder="Enter your password"
               autoComplete="current-password"
+              disabled={loading}
+              required
             />
           </div>
 
-          {error && <p className="text-xs text-red-main mt-2">{error}</p>}
+          {error && (
+            <div className="mt-3 p-3 bg-red-main/10 border border-red-main rounded-[var(--R16)]">
+              <p className="text-xs text-red-main">{error}</p>
+            </div>
+          )}
 
           <button
             type="submit"
-            disabled={loading || !username || !password}
-            className="mt-6 w-full bg-primary-main cursor-pointer text-white py-3 rounded-[var(--R16)] disabled:opacity-50"
+            disabled={loading || !username.trim() || !password.trim()}
+            className="mt-6 w-full bg-primary-main cursor-pointer text-white py-3 rounded-[var(--R16)] font-medium hover:bg-primary-light transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {loading ? "Signing in..." : "Login"}
           </button>
@@ -100,6 +173,13 @@ export default function PanditLoginPage() {
         <div className="mt-6 border-t border-black/40"></div>
 
         <p className="caption text-secondary mt-3">Talk to an expert</p>
+
+        {/* ✅ Debug info in development */}
+        {process.env.NODE_ENV === 'development' && (
+          <div className="mt-4 p-2 bg-gray-100 rounded text-xs">
+            <p>Callback URL: {callbackUrl}</p>
+          </div>
+        )}
       </div>
     </div>
   );
