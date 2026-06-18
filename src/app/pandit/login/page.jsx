@@ -3,7 +3,7 @@
 
 import { signIn, getSession } from "next-auth/react";
 import { useState, useEffect } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import Image from "next/image";
 
 export default function PanditLoginPage() {
@@ -11,40 +11,49 @@ export default function PanditLoginPage() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [checkingSession, setCheckingSession] = useState(true);
+  const [mounted, setMounted] = useState(false);
   
   const router = useRouter();
-  const searchParams = useSearchParams();
-  
-  // ✅ Get callback URL from search params
-  const callbackUrl = searchParams.get("callbackUrl") || "/pandit/dashboard";
 
-  // ✅ Check if already logged in as pandit
+  // ✅ Handle hydration mismatch
   useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  // ✅ Get callback URL safely
+  const getCallbackUrl = () => {
+    if (typeof window === 'undefined') return '/pandit/dashboard';
+    
+    const params = new URLSearchParams(window.location.search);
+    return params.get("callbackUrl") || "/pandit/dashboard";
+  };
+
+  // ✅ Check existing session only after mount
+  useEffect(() => {
+    if (!mounted) return;
+
     const checkExistingSession = async () => {
       try {
         const session = await getSession();
         console.log("🔍 Checking existing session:", session);
         
         if (session?.user?.role === "pandit") {
+          const callbackUrl = getCallbackUrl();
           console.log("✅ Already logged in as pandit, redirecting to:", callbackUrl);
-          // Force navigation to avoid redirect loops
           window.location.href = callbackUrl;
-          return;
         }
       } catch (err) {
         console.error("❌ Session check error:", err);
-      } finally {
-        setCheckingSession(false);
+        // Continue with login page
       }
     };
 
     checkExistingSession();
-  }, [callbackUrl]);
+  }, [mounted]);
 
   async function handleLogin(e) {
     e.preventDefault();
-    if (!username || !password) {
+    if (!username.trim() || !password.trim()) {
       setError("Enter username and password");
       return;
     }
@@ -53,12 +62,12 @@ export default function PanditLoginPage() {
     setError("");
 
     try {
-      console.log("🔑 Attempting pandit login:", username);
+      console.log("🔑 Attempting pandit login:", username.trim());
 
       const result = await signIn("pandit-credentials", {
         username: username.trim(),
         password: password.trim(),
-        redirect: false, // ✅ Handle redirect manually
+        redirect: false,
       });
 
       console.log("📥 Login result:", result);
@@ -72,16 +81,17 @@ export default function PanditLoginPage() {
       if (result?.ok) {
         console.log("✅ Login successful!");
         
-        // ✅ Wait a moment for session to be set, then redirect
+        const callbackUrl = getCallbackUrl();
+        console.log("🔄 Redirecting to:", callbackUrl);
+        
+        // Wait for session to be set
         setTimeout(() => {
-          console.log("🔄 Redirecting to:", callbackUrl);
           window.location.href = callbackUrl;
         }, 100);
         
         return;
       }
 
-      // Fallback
       setError("Login failed. Please try again.");
     } catch (err) {
       console.error("❌ Login error:", err);
@@ -91,13 +101,13 @@ export default function PanditLoginPage() {
     }
   }
 
-  // ✅ Show loading while checking session
-  if (checkingSession) {
+  // ✅ Prevent hydration mismatch
+  if (!mounted) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="text-center">
           <div className="w-8 h-8 border-2 border-primary-main border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-          <p className="text-secondary">Checking login status...</p>
+          <p className="text-secondary">Loading...</p>
         </div>
       </div>
     );
@@ -107,7 +117,13 @@ export default function PanditLoginPage() {
     <div className="min-h-screen bg-background flex items-center justify-center px-4">
       <div className="w-full max-w-sm sm:max-w-md bg-secondary-main rounded-[var(--R24)] px-6 py-10 text-center shadow-sm">
         <div className="mx-auto w-34 h-34 bg-gray-200 rounded-full flex items-center justify-center overflow-hidden mb-4 relative">
-          <Image src="/logo.jpg" alt="logo" fill className="object-cover" />
+          <Image 
+            src="/logo.jpg" 
+            alt="logo" 
+            fill 
+            className="object-cover"
+            unoptimized // ✅ Prevent build issues with dynamic images
+          />
         </div>
 
         <h3 className="heading-h5 text-main mb-2">Rantraa</h3>
@@ -174,10 +190,10 @@ export default function PanditLoginPage() {
 
         <p className="caption text-secondary mt-3">Talk to an expert</p>
 
-        {/* ✅ Debug info in development */}
-        {process.env.NODE_ENV === 'development' && (
+        {/* ✅ Debug info only in development */}
+        {process.env.NODE_ENV === 'development' && mounted && (
           <div className="mt-4 p-2 bg-gray-100 rounded text-xs">
-            <p>Callback URL: {callbackUrl}</p>
+            <p>Callback URL: {getCallbackUrl()}</p>
           </div>
         )}
       </div>
