@@ -34,7 +34,6 @@ export async function POST(req) {
     // ✅ Get balance info to pass to AgoraCall
     const now = new Date();
     const freeUsage = await prisma.freeCallUsage.findUnique({ where: { userId } });
-    const hasFreeCall = !freeUsage;
 
     const activePlan = await prisma.userPlan.findFirst({
       where: {
@@ -45,6 +44,8 @@ export async function POST(req) {
       },
       orderBy: { endDate: "asc" },
     });
+
+    const hasFreeCall = !freeUsage && !activePlan;
 
     const uid = Math.floor(Math.random() * 100000);
     const token = generateAgoraToken(call.channelName, uid);

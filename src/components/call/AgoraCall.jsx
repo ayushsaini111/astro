@@ -317,13 +317,12 @@ useEffect(() => {
 
     try {
       // ✅ get actual remaining seconds
-      const rawSeconds =
-        await getRawRemainingSeconds();
+   const rawSeconds = await getRawRemainingSeconds();
 
-      console.log(
-        "BALANCE CHECK:",
-        rawSeconds
-      );
+console.log(
+  "BALANCE CHECK:",
+  { rawSeconds, isFreeCall: callData?.isFreeCall, callerRole: callerInfo?.role }
+);
 
       // ✅ during free call don't check plan yet
       if (

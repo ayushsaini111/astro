@@ -1,27 +1,15 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-
-// ─── helpers ────────────────────────────────────────────────
-function formatDuration(seconds) {
-  const m = Math.floor(seconds / 60);
-  const s = seconds % 60;
-  if (m === 0) return `${s}s`;
-  return `${m}m ${s}s`;
-}
+import RequestsHeader from "@/components/Pandits/Header";
 
 function resolveUsername(call) {
   return call.user?.username || call.deletedUsername || "Deleted User";
 }
 
-function getEndedByName(call) {
-  if (!call.endedBy) return "Unknown";
-  if (call.endedBy === "USER") return resolveUsername(call);
-  if (call.endedBy === "PANDIT") return "You";
-  if (call.endedBy === "SYSTEM") return "System";
-  if (call.userId && call.endedBy === call.userId) return resolveUsername(call);
-  if (call.endedBy === call.panditId) return "You";
-  return call.endedBy;
+function isMissedCall(call) {
+  // Accurate missed call: FAILED + never started
+  return call.status === "FAILED" && !call.startTime;
 }
 
 function statusStyle(status) {
@@ -34,77 +22,95 @@ function statusStyle(status) {
   }
 }
 
-// ─── main ────────────────────────────────────────────────────
 export default function PanditDashboardPage() {
   const [data, setData] = useState(null);
+  const [panditData, setPanditData] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [selectedUser, setSelectedUser] = useState(null);
-  const [activeTab, setActiveTab] = useState("users"); // "users" | "recent"
 
   useEffect(() => {
-    fetch("/api/pandit/dashboard")
-      .then((r) => r.json())
-      .then((result) => setData(result))
-      .catch(console.error)
-      .finally(() => setLoading(false));
+    const fetchData = async () => {
+      try {
+        const [dashboardRes, profileRes] = await Promise.all([
+          fetch("/api/pandit/dashboard"),
+          fetch("/api/pandit/profile"),
+        ]);
+
+        const dashboardData = await dashboardRes.json();
+        const profileData = await profileRes.json();
+
+        setData(dashboardData);
+        setPanditData(profileData);
+      } catch (e) {
+        console.error("Error loading dashboard:", e);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchData();
   }, []);
 
-  // ── unique users including deleted ──────────────────────────
-  const uniqueUsers = useMemo(() => {
+  // Today's calls
+  const todayCalls = useMemo(() => {
     if (!data?.calls) return [];
-    const map = new Map();
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
 
-    data.calls.forEach((call) => {
-      const key = call.userId || `deleted_${call.deletedUsername || "unknown"}`;
-      const displayName = resolveUsername(call);
-      const isDeleted = !call.user;
-
-      if (!map.has(key)) {
-        map.set(key, {
-          id: key,
-          displayName,
-          isDeleted,
-          user: call.user,
-          totalCalls: 0,
-          completedCalls: 0,
-          totalDuration: 0,
-          calls: [],
-        });
-      }
-
-      const entry = map.get(key);
-      entry.totalCalls += 1;
-      entry.totalDuration += call.duration || 0;
-      if (call.status === "COMPLETED") entry.completedCalls += 1;
-      entry.calls.push(call);
-    });
-
-    return Array.from(map.values()).sort(
-      (a, b) => b.totalDuration - a.totalDuration
-    );
+    return data.calls
+      .filter((call) => {
+        const callDate = new Date(call.createdAt);
+        callDate.setHours(0, 0, 0, 0);
+        return callDate.getTime() === today.getTime();
+      })
+      .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
   }, [data]);
 
-  // ── aggregate stats ──────────────────────────────────────────
-  const stats = useMemo(() => {
-    if (!data?.calls) return null;
-    const allCalls = data.calls;
-    const completed = allCalls.filter((c) => c.status === "COMPLETED");
-    const totalSec = allCalls.reduce((s, c) => s + (c.duration || 0), 0);
+  // Recent pending requests
+  const recentRequests = useMemo(() => {
+    if (!data?.calls) return [];
+    return data.calls
+      .filter((c) => ["INITIATED", "RINGING"].includes(c.status))
+      .slice(0, 3);
+  }, [data]);
+
+  // Today's accurate stats with details
+  const todayStats = useMemo(() => {
+    if (!todayCalls.length) return null;
+
+    const completed = todayCalls.filter((c) => c.status === "COMPLETED");
+    const missedCalls = todayCalls.filter((c) => isMissedCall(c));
+    const totalSec = todayCalls.reduce((s, c) => s + (c.duration || 0), 0);
+
+    // Get first call (by createdAt)
+    const firstCall = todayCalls[0];
+
+    // Get last completed call
+    const lastCompletedCall = [...completed].reverse()[0];
+
+    // Get first missed call
+    const firstMissedCall = missedCalls[0];
+
+    // Get last call (by createdAt)
+    const lastCall = todayCalls[todayCalls.length - 1];
+
     return {
-      totalCalls: allCalls.length,
+      totalCalls: todayCalls.length,
       completedCalls: completed.length,
+      missedCalls: missedCalls.length,
       totalMinutes: Math.floor(totalSec / 60),
       totalSeconds: totalSec % 60,
-      uniqueUserCount: uniqueUsers.length,
+      firstCall,
+      lastCompletedCall,
+      firstMissedCall,
+      lastCall,
     };
-  }, [data, uniqueUsers]);
+  }, [todayCalls]);
 
   if (loading) {
     return (
       <div style={{
-        minHeight: "100vh", display: "flex",
-        alignItems: "center", justifyContent: "center",
-        fontFamily: "system-ui, sans-serif", color: "#6b7280",
+        minHeight: "100vh", display: "flex", alignItems: "center",
+        justifyContent: "center", fontFamily: "system-ui, sans-serif", color: "#6b7280"
       }}>
         <div style={{ textAlign: "center" }}>
           <div style={{
@@ -124,436 +130,255 @@ export default function PanditDashboardPage() {
   return (
     <div style={{
       minHeight: "100vh", background: "#f8f7f9",
-      fontFamily: "system-ui, -apple-system, sans-serif",
-      padding: "24px 16px 80px",
+      fontFamily: "system-ui, -apple-system, sans-serif", paddingBottom: 80
     }}>
-      <div style={{ maxWidth: 800, margin: "0 auto" }}>
+      <div style={{ maxWidth: 800, margin: "0 auto", padding: "0 16px" }}>
 
-        {/* ── HEADER ─────────────────────────────────────────── */}
-        <div style={{ marginBottom: 28 }}>
-          <h1 style={{ fontSize: 30, fontWeight: 800, color: "#1a1a2e", margin: 0 }}>
-            Dashboard
-          </h1>
-          <p style={{ color: "#6b7280", marginTop: 4, fontSize: 14 }}>
-            Your call analytics & user history
-          </p>
-        </div>
-
-        {/* ── LIVE STATS ROW ──────────────────────────────────── */}
-        <div style={{
-          display: "grid", gridTemplateColumns: "repeat(2, 1fr)",
-          gap: 12, marginBottom: 12,
-        }}>
-          <LiveStatCard
-            label="Pending"
-            value={data.pendingRequests}
-            accent="#f59e0b"
-            icon="⏳"
-          />
-          <LiveStatCard
-            label="Ongoing"
-            value={data.ongoingCalls}
-            accent="#3b82f6"
-            icon="📞"
-            pulse={data.ongoingCalls > 0}
+        {/* Header */}
+        <div style={{ marginBottom: 24, paddingTop: 24 }}>
+          <RequestsHeader
+            heading="Dashboard"
+            subheading="Talk to verified expert"
+            panditData={panditData}
+            showProfileOnMobile={true}
           />
         </div>
 
-        <div style={{
-          display: "grid", gridTemplateColumns: "repeat(2, 1fr)",
-          gap: 12, marginBottom: 24,
-        }}>
-          <LiveStatCard
-            label="Today's Calls"
-            value={data.todayCalls}
-            accent="#8b5cf6"
-            icon="📅"
-          />
-          <LiveStatCard
-            label="Minutes Today"
-            value={`${data.totalMinutesToday}m`}
-            accent="#10b981"
-            icon="⏱"
-          />
-        </div>
-
-        {/* ── ALL-TIME STATS ───────────────────────────────────── */}
-        {stats && (
+        {/* Recent Requests */}
+        <div style={{ marginBottom: 24 }}>
           <div style={{
-            background: "#1a1a2e", borderRadius: 20,
-            padding: "20px 24px", marginBottom: 24,
-            display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16,
+            display: "flex", justifyContent: "space-between",
+            alignItems: "center", marginBottom: 12
           }}>
-            <AllTimeStatItem
-              label="Total Calls"
-              value={stats.totalCalls}
-            />
-            <AllTimeStatItem
-              label="Completed"
-              value={stats.completedCalls}
-            />
-            <AllTimeStatItem
-              label="Total Time"
-              value={`${stats.totalMinutes}m ${stats.totalSeconds}s`}
-            />
-          </div>
-        )}
-
-        {/* ── TABS ─────────────────────────────────────────────── */}
-        <div style={{
-          display: "flex", gap: 8, marginBottom: 16,
-        }}>
-          {[
-            { key: "users", label: `Users (${uniqueUsers.length})` },
-            { key: "recent", label: "Recent Calls" },
-          ].map((tab) => (
-            <button
-              key={tab.key}
-              onClick={() => setActiveTab(tab.key)}
-              style={{
-                padding: "8px 20px", borderRadius: 100,
-                border: "none", cursor: "pointer",
-                fontWeight: 600, fontSize: 14,
-                background: activeTab === tab.key ? "#1a1a2e" : "white",
-                color: activeTab === tab.key ? "white" : "#6b7280",
-                transition: "all 0.15s",
-                boxShadow: activeTab === tab.key ? "none" : "0 1px 4px rgba(0,0,0,0.08)",
-              }}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </div>
-
-        {/* ── USERS TAB ────────────────────────────────────────── */}
-        {activeTab === "users" && (
-          <div style={{
-            background: "white", borderRadius: 24,
-            border: "1px solid #e5e7eb", overflow: "hidden",
-          }}>
-            {uniqueUsers.length === 0 ? (
-              <div style={{ padding: 60, textAlign: "center", color: "#9ca3af" }}>
-                No users handled yet
-              </div>
-            ) : (
-              uniqueUsers.map((item, i) => (
-                <button
-                  key={item.id}
-                  onClick={() => setSelectedUser(item)}
-                  style={{
-                    width: "100%", textAlign: "left",
-                    padding: "16px 20px", background: "white",
-                    border: "none", borderBottom: i < uniqueUsers.length - 1
-                      ? "1px solid #f3f4f6" : "none",
-                    cursor: "pointer", transition: "background 0.1s",
-                  }}
-                  onMouseEnter={(e) => e.currentTarget.style.background = "#fafafa"}
-                  onMouseLeave={(e) => e.currentTarget.style.background = "white"}
-                >
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                      {/* avatar */}
-                      <div style={{
-                        width: 42, height: 42, borderRadius: "50%",
-                        background: item.isDeleted
-                          ? "linear-gradient(135deg, #e5e7eb, #d1d5db)"
-                          : "linear-gradient(135deg, #341539, #6b21a8)",
-                        display: "flex", alignItems: "center", justifyContent: "center",
-                        color: "white", fontWeight: 700, fontSize: 16, flexShrink: 0,
-                        overflow: "hidden",
-                      }}>
-                        {item.user?.profilePic
-                          ? <img src={item.user.profilePic} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-                          : item.displayName.slice(0, 1).toUpperCase()
-                        }
-                      </div>
-
-                      <div>
-                        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                          <span style={{ fontWeight: 600, fontSize: 15, color: "#111827" }}>
-                            {item.displayName}
-                          </span>
-                          {item.isDeleted && (
-                            <span style={{
-                              fontSize: 10, padding: "2px 7px", borderRadius: 100,
-                              background: "#fef2f2", color: "#ef4444",
-                              border: "1px solid #fecaca", fontWeight: 600,
-                            }}>
-                              DELETED
-                            </span>
-                          )}
-                        </div>
-                        <div style={{ fontSize: 13, color: "#6b7280", marginTop: 2 }}>
-                          {item.totalCalls} calls · {item.completedCalls} completed
-                        </div>
-                      </div>
-                    </div>
-
-                    <div style={{ textAlign: "right" }}>
-                      <div style={{ fontSize: 18, fontWeight: 700, color: "#111827" }}>
-                        {formatDuration(item.totalDuration)}
-                      </div>
-                      <div style={{ fontSize: 12, color: "#9ca3af", marginTop: 2 }}>
-                        total talk
-                      </div>
-                    </div>
-                  </div>
-                </button>
-              ))
-            )}
-          </div>
-        )}
-
-        {/* ── RECENT CALLS TAB ────────────────────────────────── */}
-        {activeTab === "recent" && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            {data.recentCalls.map((call) => (
-              <CallCard key={call.id} call={call} />
-            ))}
-            {data.recentCalls.length === 0 && (
-              <div style={{
-                background: "white", borderRadius: 20,
-                border: "1px solid #e5e7eb",
-                padding: 60, textAlign: "center", color: "#9ca3af",
-              }}>
-                No recent calls
-              </div>
-            )}
-          </div>
-        )}
-
-      </div>
-
-      {/* ── USER HISTORY MODAL ──────────────────────────────────── */}
-      {selectedUser && (
-        <div
-          onClick={() => setSelectedUser(null)}
-          style={{
-            position: "fixed", inset: 0, zIndex: 50,
-            background: "rgba(0,0,0,0.45)", backdropFilter: "blur(4px)",
-            display: "flex", alignItems: "flex-end", justifyContent: "center",
-            padding: "0 0 0 0",
-          }}
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            style={{
-              background: "white", width: "100%", maxWidth: 640,
-              borderRadius: "24px 24px 0 0",
-              maxHeight: "88vh", overflowY: "auto",
-              padding: "24px 20px 40px",
-            }}
-          >
-            {/* drag handle */}
-            <div style={{
-              width: 36, height: 4, background: "#e5e7eb",
-              borderRadius: 100, margin: "0 auto 20px",
-            }} />
-
-            {/* modal header */}
-            <div style={{
-              display: "flex", alignItems: "center",
-              justifyContent: "space-between", marginBottom: 20,
+            <h3 style={{ fontSize: 16, fontWeight: 700, color: "#111827", margin: 0 }}>
+              Recent Requests
+            </h3>
+            <a href="/pandit/requests" style={{
+              fontSize: 11, fontWeight: 600, color: "#341539",
+              textDecoration: "none", padding: "4px 8px", borderRadius: 6
             }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                <div style={{
-                  width: 48, height: 48, borderRadius: "50%",
-                  background: selectedUser.isDeleted
-                    ? "linear-gradient(135deg, #e5e7eb, #d1d5db)"
-                    : "linear-gradient(135deg, #341539, #6b21a8)",
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                  color: "white", fontWeight: 700, fontSize: 20, overflow: "hidden",
-                }}>
-                  {selectedUser.user?.profilePic
-                    ? <img src={selectedUser.user.profilePic} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-                    : selectedUser.displayName.slice(0, 1).toUpperCase()
-                  }
-                </div>
-                <div>
-                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                    <h2 style={{ fontSize: 20, fontWeight: 700, margin: 0 }}>
-                      {selectedUser.displayName}
-                    </h2>
-                    {selectedUser.isDeleted && (
-                      <span style={{
-                        fontSize: 10, padding: "2px 7px", borderRadius: 100,
-                        background: "#fef2f2", color: "#ef4444",
-                        border: "1px solid #fecaca", fontWeight: 600,
-                      }}>DELETED</span>
-                    )}
-                  </div>
-                  <p style={{ color: "#6b7280", fontSize: 13, margin: 0 }}>
-                    {selectedUser.totalCalls} calls · {formatDuration(selectedUser.totalDuration)} total
-                  </p>
-                </div>
-              </div>
-              <button
-                onClick={() => setSelectedUser(null)}
-                style={{
-                  width: 36, height: 36, borderRadius: "50%",
-                  background: "#f3f4f6", border: "none",
-                  cursor: "pointer", fontSize: 18, color: "#6b7280",
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                }}
-              >✕</button>
-            </div>
+              View All →
+            </a>
+          </div>
 
-            {/* modal stats */}
+          {recentRequests.length > 0 ? (
             <div style={{
-              display: "grid", gridTemplateColumns: "repeat(3, 1fr)",
-              gap: 10, marginBottom: 20,
+              background: "white", borderRadius: 20,
+              border: "1px solid #e5e7eb", overflow: "hidden"
             }}>
-              {[
-                { label: "Total", value: selectedUser.totalCalls },
-                { label: "Completed", value: selectedUser.completedCalls },
-                { label: "Talk Time", value: formatDuration(selectedUser.totalDuration) },
-              ].map((s) => (
-                <div key={s.label} style={{
-                  background: "#f8f7f9", borderRadius: 14,
-                  padding: "12px 16px", textAlign: "center",
+              {recentRequests.map((call, i) => (
+                <div key={call.id} style={{
+                  padding: "14px 16px",
+                  borderBottom: i < recentRequests.length - 1 ? "1px solid #f3f4f6" : "none",
+                  display: "flex", alignItems: "center", justifyContent: "space-between"
                 }}>
-                  <div style={{ fontSize: 20, fontWeight: 700, color: "#111827" }}>
-                    {s.value}
+                  <div>
+                    <p style={{ fontWeight: 600, fontSize: 14, color: "#111827", margin: 0 }}>
+                      {resolveUsername(call)}
+                    </p>
+                    <p style={{ fontSize: 12, color: "#9ca3af", margin: "3px 0 0 0" }}>
+                      {new Date(call.createdAt).toLocaleTimeString("en-IN", {
+                        hour: "2-digit", minute: "2-digit"
+                      })}
+                    </p>
                   </div>
-                  <div style={{ fontSize: 12, color: "#6b7280", marginTop: 2 }}>
-                    {s.label}
-                  </div>
+                  <span style={{
+                    fontSize: 11, padding: "5px 11px", borderRadius: 8,
+                    background: "#fef3c7", color: "#92400e", fontWeight: 600
+                  }}>
+                    Pending
+                  </span>
                 </div>
               ))}
             </div>
-
-            {/* call list */}
-            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              {selectedUser.calls.map((call) => (
-                <CallCard key={call.id} call={call} />
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ─── sub-components ──────────────────────────────────────────
-
-function LiveStatCard({ label, value, accent, icon, pulse }) {
-  return (
-    <div style={{
-      background: "white", borderRadius: 20,
-      border: "1px solid #e5e7eb", padding: "16px 18px",
-      display: "flex", alignItems: "center", gap: 14,
-    }}>
-      <div style={{
-        width: 44, height: 44, borderRadius: 14,
-        background: accent + "18",
-        display: "flex", alignItems: "center", justifyContent: "center",
-        fontSize: 20, position: "relative", flexShrink: 0,
-      }}>
-        {icon}
-        {pulse && (
-          <span style={{
-            position: "absolute", top: 6, right: 6,
-            width: 8, height: 8, borderRadius: "50%",
-            background: "#22c55e",
-            boxShadow: "0 0 0 2px white",
-            animation: "ping 1.5s ease-in-out infinite",
-          }} />
-        )}
-        <style>{`@keyframes ping{0%,100%{opacity:1}50%{opacity:0.4}}`}</style>
-      </div>
-      <div>
-        <div style={{ fontSize: 22, fontWeight: 800, color: "#111827", lineHeight: 1 }}>
-          {value}
-        </div>
-        <div style={{ fontSize: 12, color: "#9ca3af", marginTop: 3 }}>
-          {label}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function AllTimeStatItem({ label, value }) {
-  return (
-    <div style={{ textAlign: "center" }}>
-      <div style={{ fontSize: 22, fontWeight: 800, color: "white" }}>
-        {value}
-      </div>
-      <div style={{ fontSize: 11, color: "#9ca3af", marginTop: 3, textTransform: "uppercase", letterSpacing: "0.05em" }}>
-        {label}
-      </div>
-    </div>
-  );
-}
-
-function CallCard({ call }) {
-  const duration = call.duration || 0;
-  const { bg, color } = statusStyle(call.status);
-  const username = resolveUsername(call);
-
-  return (
-    <div style={{
-      background: "white", borderRadius: 18,
-      border: "1px solid #e5e7eb", padding: "14px 16px",
-    }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-        <div>
-          <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
-            <span style={{ fontWeight: 600, fontSize: 15, color: "#111827" }}>
-              {username}
-            </span>
-            {!call.user && (
-              <span style={{
-                fontSize: 10, padding: "1px 6px", borderRadius: 100,
-                background: "#fef2f2", color: "#ef4444",
-                border: "1px solid #fecaca", fontWeight: 600,
-              }}>DELETED</span>
-            )}
-          </div>
-          <div style={{ fontSize: 12, color: "#9ca3af", marginBottom: 8 }}>
-            {new Date(call.createdAt).toLocaleString("en-IN")}
-          </div>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-            <span style={{
-              fontSize: 11, padding: "3px 9px", borderRadius: 100,
-              background: bg, color, fontWeight: 600,
+          ) : (
+            <div style={{
+              background: "white", borderRadius: 20, border: "1px solid #e5e7eb",
+              padding: 40, textAlign: "center", color: "#9ca3af", fontSize: 14
             }}>
-              {call.status}
-            </span>
-            <span style={{
-              fontSize: 11, padding: "3px 9px", borderRadius: 100,
-              background: "#f3f4f6", color: "#6b7280",
-            }}>
-              {call.billingType}
-            </span>
-            <span style={{
-              fontSize: 11, padding: "3px 9px", borderRadius: 100,
-              background: "#f3f4f6", color: "#6b7280",
-            }}>
-              Ended: {getEndedByName(call)}
-            </span>
-            {call.isFreeCall && (
-              <span style={{
-                fontSize: 11, padding: "3px 9px", borderRadius: 100,
-                background: "#fffbeb", color: "#d97706",
-                border: "1px solid #fde68a",
-              }}>Free</span>
-            )}
-          </div>
-        </div>
-
-        <div style={{ textAlign: "right", flexShrink: 0 }}>
-          <div style={{ fontSize: 20, fontWeight: 700, color: "#111827" }}>
-            {formatDuration(duration)}
-          </div>
-          {call.totalCost > 0 && (
-            <div style={{ fontSize: 13, color: "#16a34a", fontWeight: 600, marginTop: 2 }}>
-              ₹{call.totalCost.toFixed(2)}
+              No pending requests
             </div>
           )}
         </div>
+
+        {/* Today's Overview */}
+        {todayStats && (
+          <div style={{ marginBottom: 24 }}>
+            <h3 style={{
+              fontSize: 16, fontWeight: 700, color: "#111827", margin: "0 0 12px 0"
+            }}>
+              Today's Overview
+            </h3>
+
+            <div style={{
+              background: "white", borderRadius: 20,
+              border: "1px solid #e5e7eb", padding: "24px"
+            }}>
+              <div style={{ position: "relative" }}>
+                {/* Timeline Line */}
+                <div style={{
+                  position: "absolute", left: 20, top: 0, bottom: 0,
+                  width: 2, background: "linear-gradient(180deg, #341539, #e5e7eb)"
+                }} />
+
+                <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+
+                  {/* First Call */}
+                  {todayStats.firstCall && (
+                    <TimelineItem
+                      icon="🕐"
+                      label="First Call"
+                      value={new Date(todayStats.firstCall.createdAt).toLocaleTimeString("en-IN", {
+                        hour: "2-digit", minute: "2-digit"
+                      })}
+                      subtitle={resolveUsername(todayStats.firstCall)}
+                      color="#f59e0b"
+                    />
+                  )}
+
+                  {/* Missed Calls */}
+                  {todayStats.missedCalls > 0 && todayStats.firstMissedCall && (
+                    <TimelineItem
+                      icon="✕"
+                      label={`Missed Call${todayStats.missedCalls > 1 ? 's' : ''}`}
+                      value={todayStats.missedCalls}
+                      subtitle={`First at ${new Date(todayStats.firstMissedCall.createdAt).toLocaleTimeString("en-IN", {
+                        hour: "2-digit", minute: "2-digit"
+                      })} - ${resolveUsername(todayStats.firstMissedCall)}`}
+                      color="#ef4444"
+                    />
+                  )}
+
+                  {/* Completed Calls */}
+                  {todayStats.completedCalls > 0 && (
+                    <TimelineItem
+                      icon="✓"
+                      label="Completed Calls"
+                      value={todayStats.completedCalls}
+                      color="#10b981"
+                    />
+                  )}
+
+                  {/* Last Call */}
+                  {todayStats.lastCall && (
+                    <TimelineItem
+                      icon="🕑"
+                      label="Last Call"
+                      value={new Date(todayStats.lastCall.createdAt).toLocaleTimeString("en-IN", {
+                        hour: "2-digit", minute: "2-digit"
+                      })}
+                      subtitle={resolveUsername(todayStats.lastCall)}
+                      color="#8b5cf6"
+                    />
+                  )}
+
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Today's Activity Summary */}
+        {todayCalls.length > 0 && todayStats && (
+          <div>
+            <h3 style={{
+              fontSize: 16, fontWeight: 700, color: "#111827", margin: "0 0 12px 0"
+            }}>
+              Today's Activity
+            </h3>
+
+            <div style={{
+              display: "grid", gridTemplateColumns: "repeat(3, 1fr)",
+              gap: 10, marginBottom: 16
+            }}>
+              <StatBox 
+                label="Total Calls" 
+                value={todayStats.totalCalls} 
+                icon="📞" 
+                color="#3b82f6" 
+              />
+              <StatBox 
+                label="Talk Time" 
+                value={`${todayStats.totalMinutes}m ${todayStats.totalSeconds}s`} 
+                icon="⏱" 
+                color="#10b981" 
+              />
+              <StatBox 
+                label="Missed" 
+                value={todayStats.missedCalls} 
+                icon="✕" 
+                color="#ef4444" 
+              />
+            </div>
+          </div>
+        )}
+
+        {todayCalls.length === 0 && (
+          <div style={{
+            background: "white", borderRadius: 20, border: "1px solid #e5e7eb",
+            padding: 60, textAlign: "center", color: "#9ca3af"
+          }}>
+            <p style={{ fontSize: 14, margin: 0 }}>No calls today yet</p>
+          </div>
+        )}
       </div>
+    </div>
+  );
+}
+
+// ─── Sub Components ───────────────────────────────────────
+
+function TimelineItem({ icon, label, value, subtitle, color }) {
+  return (
+    <div style={{ display: "flex", gap: 16, position: "relative", zIndex: 1 }}>
+      {/* Timeline Dot */}
+      <div style={{
+        width: 40, height: 40, borderRadius: "50%",
+        background: color + "18", border: `2px solid ${color}`,
+        display: "flex", alignItems: "center", justifyContent: "center",
+        fontSize: 18, flexShrink: 0, position: "relative", zIndex: 2
+      }}>
+        {icon}
+      </div>
+
+      {/* Content */}
+      <div style={{ flex: 1, paddingTop: 4 }}>
+        <p style={{
+          fontSize: 12, color: "#6b7280", margin: 0,
+          fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.5px"
+        }}>
+          {label}
+        </p>
+        <p style={{
+          fontSize: 18, fontWeight: 800, color: "#111827", margin: "6px 0 0 0"
+        }}>
+          {value}
+        </p>
+        {subtitle && (
+          <p style={{
+            fontSize: 13, color: "#6b7280", margin: "4px 0 0 0", fontWeight: 500
+          }}>
+            {subtitle}
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function StatBox({ label, value, icon, color }) {
+  return (
+    <div style={{
+      background: "white", border: `1px solid ${color}20`,
+      borderRadius: 16, padding: "14px 12px", textAlign: "center"
+    }}>
+      <div style={{ fontSize: 20, marginBottom: 4 }}>{icon}</div>
+      <p style={{ fontSize: 18, fontWeight: 800, color, margin: 0 }}>
+        {value}
+      </p>
+      <p style={{ fontSize: 11, color: "#9ca3af", margin: "4px 0 0 0", fontWeight: 600 }}>
+        {label}
+      </p>
     </div>
   );
 }

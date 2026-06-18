@@ -52,60 +52,62 @@ export default function LoginPage() {
     setLoading(false);
     if (res.ok) {
       setOtpSent(true);
-      setTimer(30); // 🔥 important
+      setTimer(30);
     } else {
       setError("Failed to send OTP. Try again.");
     }
   }
 
-async function handleVerifyOtp() {
-  const code = otp.join("");
-  if (code.length !== 6) { setError("Enter full 6-digit OTP"); return; }
+  async function handleVerifyOtp() {
+    const code = otp.join("");
+    if (code.length !== 6) {
+      setError("Enter full 6-digit OTP");
+      return;
+    }
 
-  setLoading(true);
-  setError("");
+    setLoading(true);
+    setError("");
 
-  try {
-    // 1. Twilio verifies OTP, get back a short-lived token
-    const res = await fetch("/api/auth/verify-otp", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ phone, otp: code }),
-    });
+    try {
+      const res = await fetch("/api/auth/verify-otp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone, otp: code }),
+      });
 
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({}));
-      setError(data.error || "Invalid OTP. Try again.");
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setError(data.error || "Invalid OTP. Try again.");
+        setLoading(false);
+        return;
+      }
+
+      const { verifiedToken, redirect } = await res.json();
+
+      // Note: explicit provider id "otp-credentials" — required since
+      // there are now two CredentialsProvider entries (user OTP + pandit).
+      const result = await signIn("otp-credentials", {
+        phone,
+        token: verifiedToken,
+        redirect: false,
+      });
+
       setLoading(false);
-      return;
+
+      if (result?.error) {
+        setError("Session creation failed. Try again.");
+        return;
+      }
+
+      const params = new URLSearchParams(window.location.search);
+      const callbackUrl = params.get("callbackUrl") || redirect || "/";
+      router.push(callbackUrl);
+    } catch (err) {
+      setLoading(false);
+      setError("Something went wrong. Please try again.");
     }
-
-    const { verifiedToken, redirect } = await res.json();
-
-    // 2. Create NextAuth session
-    const result = await signIn("credentials", {
-      phone,
-      token: verifiedToken,
-      redirect: false,
-    });
-
-    setLoading(false);
-
-    if (result?.error) {
-      setError("Session creation failed. Try again.");
-      return;
-    }
-
-    // 3. Redirect — respect ?callbackUrl if present
-    const params = new URLSearchParams(window.location.search);
-    const callbackUrl = params.get("callbackUrl") || redirect || "/";
-    router.push(callbackUrl);
-
-  } catch (err) {
-    setLoading(false);
-    setError("Something went wrong. Please try again.");
   }
-}
+
   function handleOtpInput(index, value) {
     if (!/^\d*$/.test(value)) return;
     const updated = [...otp];
@@ -123,18 +125,15 @@ async function handleVerifyOtp() {
 
   return (
     <div className="min-h-screen bg-background flex items-center justify-center px-4">
-
       <div className="w-full max-w-sm sm:max-w-md bg-secondary-main rounded-[var(--R24)] px-6 py-10 text-center shadow-sm">
-
-        {/* Logo */}
         <div className="mx-auto w-34 h-34 bg-gray-200 rounded-full flex items-center justify-center overflow-hidden mb-4 relative">
           <Image src="/logo.jpg" alt="logo" fill className="object-cover" />
         </div>
 
         <h3 className="heading-h5 text-main mb-2">Rantraa</h3>
+
         {!otpSent && (
           <>
-            {/* Google Button */}
             <button
               onClick={handleGoogle}
               disabled={googleLoading}
@@ -149,7 +148,6 @@ async function handleVerifyOtp() {
               {googleLoading ? "Signing in..." : "Continue with Google"}
             </button>
 
-            {/* Divider */}
             <div className="flex items-center gap-3 mb-5">
               <div className="flex-1 h-px bg-black/30" />
               <span className="text-xs text-secondary">or use phone</span>
@@ -168,7 +166,6 @@ async function handleVerifyOtp() {
               Enter your mobile number
             </p>
 
-            {/* Phone Input */}
             <div className="mt-2 flex items-center border border-black rounded-[var(--R16)] px-4 py-3">
               <span className="mr-2">+91</span>
               <input
@@ -195,15 +192,13 @@ async function handleVerifyOtp() {
           </>
         ) : (
           <>
-            <h1 className="heading-h2 text-main">
-              Verify your number
-            </h1>
+            <h1 className="heading-h2 text-main">Verify your number</h1>
 
             <p className="body-default text-secondary mt-4">
               Enter verification code
             </p>
 
-            <div className="flex gap-2 justify-center  mt-4">
+            <div className="flex gap-2 justify-center mt-4">
               {otp.map((digit, i) => (
                 <input
                   key={i}
@@ -213,8 +208,9 @@ async function handleVerifyOtp() {
                   value={digit}
                   onChange={(e) => handleOtpInput(i, e.target.value)}
                   onKeyDown={(e) => handleOtpKey(i, e)}
-                  className={`w-11 h-12 text-center text-lg border rounded-[8px] bg-transparent ${error ? "border-red-main" : "border-black"
-                    }`}
+                  className={`w-11 h-12 text-center text-lg border rounded-[8px] bg-transparent ${
+                    error ? "border-red-main" : "border-black"
+                  }`}
                 />
               ))}
             </div>
@@ -239,9 +235,7 @@ async function handleVerifyOtp() {
 
         <div className="mt-6 border-t border-black/40"></div>
 
-        <p className="caption text-secondary mt-3">
-          Talk to an expert
-        </p>
+        <p className="caption text-secondary mt-3">Talk to an expert</p>
       </div>
     </div>
   );

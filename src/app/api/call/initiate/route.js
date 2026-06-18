@@ -43,7 +43,7 @@ export async function POST(req) {
   // DOB condition removed — only username is required
   if (!user.username) return NextResponse.json({ error: "INCOMPLETE_PROFILE" }, { status: 403 });
 
-  const hasFreeCall = !freeUsage;
+  const hasFreeCall = !freeUsage && !activePlan;
   if (!hasFreeCall && !activePlan) {
     return NextResponse.json({ error: "NO_BALANCE", message: "Buy a plan to continue calling" }, { status: 403 });
   }

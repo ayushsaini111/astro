@@ -37,28 +37,21 @@ export async function GET() {
     }
   }
 
-  // ✅ FIXED: availableSeconds respects perDay cap for UI/blocking purposes
-  // but raw remainingSeconds is also returned for in-call balance checks
   let availableSeconds = 0;
   for (const up of activePlans) {
-    if (up.plan.planType === "TOPUP" && up.plan.perDayLimit) {
-      const dailyLeft = up.plan.perDayLimit - up.perDayUsedSeconds;
+    if (up.plan.planType === "TOPUP") {
+      const dailyLeft = (up.plan.perDayLimit ?? 0) - up.perDayUsedSeconds;
       availableSeconds += Math.min(up.remainingSeconds, Math.max(0, dailyLeft));
     } else {
-      // ✅ Non-TOPUP plans: use remainingSeconds directly, no daily cap
       availableSeconds += up.remainingSeconds;
     }
   }
 
-  // ✅ NEW: raw total across all plans, ignoring perDay cap (used during active calls)
-  const totalRemainingSeconds = activePlans.reduce(
-    (sum, up) => sum + up.remainingSeconds, 0
-  );
-
-  const freeSeconds = freeUsage ? 0 : 5; // 🧪 change to 300 for production
+  const hasFreeCall = !freeUsage && activePlans.length === 0;
+  const freeSeconds = hasFreeCall ? 5 : 0; // 🧪 change to 300 for production
 
   return Response.json({
-    hasFreeCall: !freeUsage,
+    hasFreeCall,
     freeSeconds,
     activePlans: activePlans.map((up) => ({
       id: up.id,
@@ -70,7 +63,6 @@ export async function GET() {
       planType: up.plan.planType,
     })),
     availableSeconds,
-    totalRemainingSeconds, // ✅ NEW field — use this in AgoraCall balance check
-    totalSeconds: freeUsage ? availableSeconds : availableSeconds + freeSeconds,
+    totalSeconds: hasFreeCall ? availableSeconds + freeSeconds : availableSeconds,
   });
 }

@@ -1,58 +1,169 @@
-import Link from "next/link";
-import { prisma } from "@/lib/prisma";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
-import { redirect } from "next/navigation";
+"use client";
+import { useState, useEffect } from "react";
+import RequestsHeader from "@/components/Pandits/Header";
+import CategoryTabs from "@/components/Pandits/CategoryTabs";
 
-export default async function HistoryPage({ searchParams }) {
-  const session = await getServerSession(authOptions);
+const CATEGORIES = [
+  { key: "today", label: "Today" },
+  { key: "thisWeek", label: "This Week" },
+  { key: "thisMonth", label: "This Month" },
+  { key: "all", label: "All Time" },
+];
 
-  if (!session?.user?.email) {
-    redirect("/login");
-  }
+export default function HistoryPage() {
+  const [activeCategory, setActiveCategory] = useState("today");
+  const [allCalls, setAllCalls] = useState([]);
+  const [panditData, setPanditData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [showAll, setShowAll] = useState(false);
 
-  const pandit = await prisma.pandit.findUnique({
-    where: { email: session.user.email },
-  });
+  // ✅ Load history data
+  const loadHistory = async () => {
+    try {
+      const [historyRes, profileRes] = await Promise.all([
+        fetch(`/api/pandit/history?showAll=${showAll}`),
+        fetch("/api/pandit/profile"),
+      ]);
 
-  if (!pandit) {
-    redirect("/login");
-  }
+      const [historyData, profileData] = await Promise.all([
+        historyRes.json(),
+        profileRes.json(),
+      ]);
 
-  const params = await searchParams;
-  const showAll = params?.showAll === "true";
+      if (historyRes.ok) {
+        setAllCalls(historyData.calls || []);
+      }
 
-  // ✅ Paginated calls for display (10 or all)
-  const calls = await prisma.call.findMany({
-    where: { panditId: pandit.id },
-    include: { user: true },
-    orderBy: { createdAt: "desc" },
-    ...(showAll ? {} : { take: 10 }),
-  });
+      if (profileRes.ok) {
+        setPanditData(profileData);
+      }
+    } catch (e) {
+      console.error("Error loading history:", e);
+    } finally {
+      setLoading(false);
+    }
+  };
 
-  // ✅ ALL calls for stats — never paginated, always accurate
-  const allCallsForStats = await prisma.call.findMany({
-    where: { panditId: pandit.id },
-    select: {
-      duration: true,
-      status: true,
-    },
-  });
+  useEffect(() => {
+    loadHistory();
+  }, [showAll]);
 
-  // ✅ Stats always based on full history
-  const totalCalls = allCallsForStats.length;
-  const completedCalls = allCallsForStats.filter(
-    (c) => c.status === "COMPLETED"
-  ).length;
-  const totalDurationSeconds = allCallsForStats.reduce(
-    (sum, c) => sum + (c.duration || 0),
-    0
+  // ✅ Get date ranges
+  const now = new Date();
+  const today = new Date(now.toDateString());
+  const yesterday = new Date(today);
+  yesterday.setDate(yesterday.getDate() - 1);
+
+  const weekStart = new Date(today);
+  weekStart.setDate(weekStart.getDate() - today.getDay());
+
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+
+  // ✅ Determine if call is missed
+  const isMissedCall = (call) => {
+    // Missed if: status is FAILED and NOT picked up (no startTime) and NOT declined by pandit
+    if (call.status === "FAILED") {
+      // Not picked up (never started)
+      if (!call.startTime) {
+        return true;
+      }
+      // Picked up but ended (call was ongoing at some point)
+      return false;
+    }
+    return false;
+  };
+
+  // ✅ Filter by time category
+  const getFilteredCalls = () => {
+    return allCalls.filter((call) => {
+      const callDate = new Date(call.createdAt);
+      const callDateOnly = new Date(callDate.toDateString());
+
+      if (activeCategory === "today") {
+        return callDateOnly.getTime() === today.getTime();
+      }
+      if (activeCategory === "thisWeek") {
+        return callDateOnly >= weekStart;
+      }
+      if (activeCategory === "thisMonth") {
+        return callDateOnly >= monthStart;
+      }
+      if (activeCategory === "all") {
+        return true;
+      }
+      return true;
+    });
+  };
+
+  const filteredCalls = getFilteredCalls();
+
+  // ✅ Group calls by date
+  const groupCallsByDate = () => {
+    const grouped = {};
+
+    filteredCalls.forEach((call) => {
+      const callDate = new Date(call.createdAt);
+      const dateKey = callDate.toDateString();
+
+      if (!grouped[dateKey]) {
+        grouped[dateKey] = [];
+      }
+      grouped[dateKey].push(call);
+    });
+
+    return grouped;
+  };
+
+  const groupedCalls = groupCallsByDate();
+  const sortedDates = Object.keys(groupedCalls).sort(
+    (a, b) => new Date(b) - new Date(a)
   );
-  const totalMinutes = Math.floor(totalDurationSeconds / 60);
-  const totalSeconds = totalDurationSeconds % 60;
 
+  // ✅ Category counts
+  const categoryCounts = {
+    today: allCalls.filter((c) => {
+      const callDate = new Date(c.createdAt);
+      return new Date(callDate.toDateString()).getTime() === today.getTime();
+    }).length,
+    thisWeek: allCalls.filter((c) => {
+      const callDate = new Date(c.createdAt);
+      return new Date(callDate.toDateString()) >= weekStart;
+    }).length,
+    thisMonth: allCalls.filter((c) => {
+      const callDate = new Date(c.createdAt);
+      return new Date(callDate.toDateString()) >= monthStart;
+    }).length,
+    all: allCalls.length,
+  };
+
+  // ✅ Stats (always from full history)
+  const stats = {
+    totalCalls: allCalls.length,
+    completedCalls: allCalls.filter((c) => c.status === "COMPLETED").length,
+    missedCalls: allCalls.filter((c) => isMissedCall(c)).length,
+    totalDurationSeconds: allCalls.reduce((sum, c) => sum + (c.duration || 0), 0),
+  };
+
+  const totalMinutes = Math.floor(stats.totalDurationSeconds / 60);
+  const totalSeconds = stats.totalDurationSeconds % 60;
+
+  // ✅ Helper functions
   const resolveUsername = (call) =>
     call.user?.username || call.deletedUsername || "Deleted User";
+
+  const getCallType = (call) => {
+    if (call.status === "COMPLETED") {
+      return { type: "Completed", icon: "✓", color: "text-green-600" };
+    }
+
+    const missed = isMissedCall(call);
+    if (missed) {
+      return { type: "Missed", icon: "×", color: "text-red-600" };
+    }
+
+    // Declined or not picked up but tried
+    return { type: "Declined", icon: "⊘", color: "text-orange-600" };
+  };
 
   const getEndedByName = (call) => {
     if (!call.endedBy) return "Unknown";
@@ -64,152 +175,241 @@ export default async function HistoryPage({ searchParams }) {
     return call.endedBy;
   };
 
+  // ✅ Get human-readable date
+  const getDateLabel = (dateString) => {
+    const date = new Date(dateString);
+    const todayDate = new Date(today.toDateString());
+    const yesterdayDate = new Date(today);
+    yesterdayDate.setDate(yesterdayDate.getDate() - 1);
+
+    if (date.getTime() === todayDate.getTime()) {
+      return "Today";
+    }
+    if (date.getTime() === yesterdayDate.getTime()) {
+      return "Yesterday";
+    }
+
+    return date.toLocaleDateString("en-IN", {
+      weekday: "short",
+      month: "short",
+      day: "numeric",
+    });
+  };
+
+  // ✅ Subheading text
+  const subheading = `${filteredCalls.length} call${
+    filteredCalls.length !== 1 ? "s" : ""
+  }`;
+
   return (
-    <div className="min-h-screen bg-background p-6">
+    <div className="min-h-screen bg-background px-4 py-6 max-w-7xl mx-auto">
+      {/* Header with Toggle */}
+      <RequestsHeader
+        heading="Call History"
+        subheading={subheading}
+        panditData={panditData}
+        showProfileOnMobile={true}
+      />
 
-      {/* HEADER */}
-      <div className="mb-6">
-        <h1 className="text-4xl font-bold text-main">Call History</h1>
-        <p className="text-secondary mt-2">
-          {showAll
-            ? `Showing all ${calls.length} calls`
-            : `Latest ${calls.length} calls`}
-        </p>
-      </div>
-
-      {/* ✅ STATS — always full history, never affected by pagination */}
-      <div className="grid grid-cols-3 gap-4 mb-10">
-        <div className="bg-white border border-black/10 rounded-2xl p-5 text-center">
-          <p className="text-3xl font-bold text-main">{totalCalls}</p>
-          <p className="text-secondary text-sm mt-1">Total Calls</p>
+      {/* ✅ STATS — always full history */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+        <div className="bg-white border border-black/10 rounded-[var(--R24)] p-5 text-center">
+          <p className="text-3xl font-bold text-main">{stats.totalCalls}</p>
+          <p className="text-secondary text-xs mt-2">Total Calls</p>
         </div>
-        <div className="bg-white border border-black/10 rounded-2xl p-5 text-center">
-          <p className="text-3xl font-bold text-main">{completedCalls}</p>
-          <p className="text-secondary text-sm mt-1">Completed</p>
+        <div className="bg-white border border-black/10 rounded-[var(--R24)] p-5 text-center">
+          <p className="text-3xl font-bold text-green-600">{stats.completedCalls}</p>
+          <p className="text-secondary text-xs mt-2">Completed</p>
         </div>
-        <div className="bg-white border border-black/10 rounded-2xl p-5 text-center">
+        <div className="bg-white border border-black/10 rounded-[var(--R24)] p-5 text-center">
+          <p className="text-3xl font-bold text-red-600">{stats.missedCalls}</p>
+          <p className="text-secondary text-xs mt-2">Missed</p>
+        </div>
+        <div className="bg-white border border-black/10 rounded-[var(--R24)] p-5 text-center">
           <p className="text-3xl font-bold text-main">
             {totalMinutes}m {totalSeconds}s
           </p>
-          <p className="text-secondary text-sm mt-1">Total Time</p>
+          <p className="text-secondary text-xs mt-2">Total Time</p>
         </div>
       </div>
 
-      {/* CALLS LIST */}
-      <div className="space-y-5">
-        {calls.map((call) => {
-          const duration = call.duration || 0;
-          const minutes = Math.floor(duration / 60);
-          const seconds = duration % 60;
-          const username = resolveUsername(call);
-          const isDeleted = !call.user;
+      {/* Category Tabs */}
+      <CategoryTabs
+        categories={CATEGORIES}
+        activeCategory={activeCategory}
+        onCategoryChange={setActiveCategory}
+        counts={categoryCounts}
+      />
 
-          return (
-            <div
-              key={call.id}
-              className="bg-white border border-black/10 rounded-[32px] p-6"
+      {/* Loading State */}
+      {loading && (
+        <div className="text-center mt-24 text-secondary">
+          <div className="inline-block w-8 h-8 border-4 border-primary-main/30 border-t-primary-main rounded-full animate-spin mb-4" />
+          <p className="caption">Loading history...</p>
+        </div>
+      )}
+
+      {/* Empty State */}
+      {!loading && filteredCalls.length === 0 && (
+        <div className="text-center mt-24 text-secondary">
+          <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-black/5 flex items-center justify-center">
+            <svg
+              className="w-8 h-8 text-secondary"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
             >
-              <div className="flex items-start justify-between gap-6">
-
-                {/* LEFT */}
-                <div>
-                  <div className="flex items-center gap-2">
-                    <h2 className="text-xl font-semibold text-main">
-                      {username}
-                    </h2>
-                    {isDeleted && (
-                      <span className="text-xs px-2 py-0.5 rounded-full bg-red-50 text-red-400 border border-red-200">
-                        Account Deleted
-                      </span>
-                    )}
-                  </div>
-
-                  <p className="text-secondary mt-1">
-                    {new Date(call.createdAt).toLocaleString("en-IN")}
-                  </p>
-
-                  <div className="flex flex-wrap gap-3 mt-4">
-                    <div className={`
-                      px-3 py-1 rounded-full text-sm
-                      ${call.status === "COMPLETED"
-                        ? "bg-green-50 text-green-600"
-                        : call.status === "ONGOING"
-                        ? "bg-blue-50 text-blue-600"
-                        : call.status === "FAILED"
-                        ? "bg-red-50 text-red-500"
-                        : "bg-black/5 text-main"
-                      }
-                    `}>
-                      {call.status}
-                    </div>
-
-                    <div className="px-3 py-1 rounded-full bg-black/5 text-sm">
-                      {call.billingType}
-                    </div>
-
-                    <div className="px-3 py-1 rounded-full bg-black/5 text-sm">
-                      Ended by: {getEndedByName(call)}
-                    </div>
-
-                    {call.isFreeCall && (
-                      <div className="px-3 py-1 rounded-full bg-amber-50 text-amber-600 text-sm border border-amber-200">
-                        Free Call
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* RIGHT */}
-                <div className="text-right shrink-0">
-                  <p className="text-3xl font-bold text-main">
-                    {minutes}m {seconds}s
-                  </p>
-                  <p className="text-secondary mt-1 text-sm">Duration</p>
-                  {call.totalCost != null && call.totalCost > 0 && (
-                    <p className="text-sm font-medium text-green-600 mt-1">
-                      ₹{call.totalCost.toFixed(2)}
-                    </p>
-                  )}
-                </div>
-
-              </div>
-            </div>
-          );
-        })}
-
-        {/* EMPTY */}
-        {calls.length === 0 && (
-          <div className="bg-white border border-black/10 rounded-[32px] p-20 text-center">
-            <p className="text-2xl font-semibold text-main">No Call History</p>
-            <p className="text-secondary mt-2">Completed calls will appear here</p>
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+              />
+            </svg>
           </div>
-        )}
+          <p className="text-lg font-medium text-main mb-1">
+            No calls in this period
+          </p>
+          <p className="caption">Calls will appear here once you have history</p>
+        </div>
+      )}
+
+      {/* Calls List Grouped by Date */}
+      <div className="flex flex-col gap-6">
+        {sortedDates.map((dateString) => (
+          <div key={dateString}>
+            {/* Date Header */}
+            <h3 className="text-sm font-semibold text-main mb-3 px-1">
+              {getDateLabel(dateString)}
+            </h3>
+
+            {/* Calls for this date */}
+            <div className="flex flex-col gap-3">
+              {groupedCalls[dateString].map((call) => {
+                const duration = call.duration || 0;
+                const minutes = Math.floor(duration / 60);
+                const seconds = duration % 60;
+                const username = resolveUsername(call);
+                const isDeleted = !call.user;
+                const callType = getCallType(call);
+                const missed = isMissedCall(call);
+
+                const statusColor = missed
+                  ? "bg-red-50 text-red-600"
+                  : call.status === "COMPLETED"
+                  ? "bg-green-50 text-green-600"
+                  : "bg-orange-50 text-orange-600";
+
+                return (
+                  <div
+                    key={call.id}
+                    className={`border rounded-[var(--R24)] p-4 ${
+                      missed
+                        ? "bg-red-50/30 border-red-200/50"
+                        : "bg-white border-black/10"
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-4 flex-col sm:flex-row">
+                      {/* LEFT */}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-2">
+                          <h2 className="text-base font-semibold text-main truncate">
+                            {username}
+                          </h2>
+                          {isDeleted && (
+                            <span className="text-xs px-2 py-0.5 rounded-full bg-red-50 text-red-400 border border-red-200 whitespace-nowrap">
+                              Deleted
+                            </span>
+                          )}
+                          {missed && (
+                            <span className="text-xs px-2 py-0.5 rounded-full bg-red-100 text-red-600 border border-red-200 whitespace-nowrap font-medium">
+                              Missed Call
+                            </span>
+                          )}
+                        </div>
+
+                        <p className="text-secondary text-xs mb-3">
+                          {new Date(call.createdAt).toLocaleTimeString("en-IN", {
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })}
+                        </p>
+
+                        <div className="flex flex-wrap gap-2">
+                          <div className={`px-2.5 py-1 rounded-full text-xs font-medium ${statusColor}`}>
+                            {callType.type}
+                          </div>
+
+                          <div className="px-2.5 py-1 rounded-full bg-black/5 text-xs text-secondary">
+                            {call.billingType}
+                          </div>
+
+                          {!missed && (
+                            <div className="px-2.5 py-1 rounded-full bg-black/5 text-xs text-secondary">
+                              {getEndedByName(call)}
+                            </div>
+                          )}
+
+                          {call.isFreeCall && (
+                            <div className="px-2.5 py-1 rounded-full bg-amber-50 text-amber-600 text-xs border border-amber-200">
+                              Free Call
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* RIGHT */}
+                      <div className="text-right shrink-0">
+                        {!missed && duration > 0 ? (
+                          <>
+                            <p className="text-2xl font-bold text-main">
+                              {minutes}m {seconds}s
+                            </p>
+                            <p className="text-secondary text-xs mt-1">Duration</p>
+                            {call.totalCost != null && call.totalCost > 0 && (
+                              <p className="text-xs font-medium text-green-600 mt-1">
+                                ₹{call.totalCost.toFixed(2)}
+                              </p>
+                            )}
+                          </>
+                        ) : (
+                          <>
+                            <p className="text-2xl font-bold text-red-600">0m 0s</p>
+                            <p className="text-secondary text-xs mt-1">Not Answered</p>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ))}
       </div>
 
-      {/* SHOW ALL */}
-      {!showAll && calls.length >= 10 && (
-        <div className="flex justify-center mt-10">
-          <Link
-            href="/pandit/history?showAll=true"
-            className="px-8 py-4 rounded-full bg-primary-main text-white font-medium hover:opacity-90 transition-all"
+      {/* SHOW ALL / SHOW LESS */}
+      {!showAll && filteredCalls.length >= 10 && (
+        <div className="flex justify-center mt-8">
+          <button
+            onClick={() => setShowAll(true)}
+            className="px-6 py-2.5 rounded-full bg-primary-main text-white text-sm font-medium hover:bg-primary-main/90 transition-colors"
           >
             Show All History
-          </Link>
+          </button>
         </div>
       )}
 
-      {/* SHOW LESS */}
-      {showAll && calls.length > 10 && (
-        <div className="flex justify-center mt-10">
-          <Link
-            href="/pandit/history"
-            className="px-8 py-4 rounded-full bg-black/10 text-main font-medium hover:bg-black/20 transition-all"
+      {showAll && filteredCalls.length > 10 && (
+        <div className="flex justify-center mt-8">
+          <button
+            onClick={() => setShowAll(false)}
+            className="px-6 py-2.5 rounded-full bg-black/10 text-main text-sm font-medium hover:bg-black/20 transition-colors"
           >
             Show Less
-          </Link>
+          </button>
         </div>
       )}
-
     </div>
   );
 }

@@ -1,61 +1,117 @@
 "use client";
-import { useState, useRef,useEffect } from "react";
+import { useState, useRef, useEffect } from "react";
 import dynamic from "next/dynamic";
-import Image from "next/image";
-import { signOut } from "next-auth/react";
 import { useSSE } from "@/hooks/useSSE";
+import { useSession } from "next-auth/react";
+import RequestsHeader from "@/components/pandit/RequestsHeader";
+import CategoryTabs from "@/components/pandit/CategoryTabs";
+import RequestCard from "@/components/pandit/RequestCard";
+import EmptyState from "@/components/pandit/EmptyState";
 
 const AgoraCall = dynamic(() => import("@/components/call/AgoraCall"), { ssr: false });
 
-export default function PanditDashboard({ pandit }) {
-  const [requests, setRequests] = useState([]);
+const CATEGORIES = [
+  { key: "all", label: "All" },
+  { key: "pending", label: "Pending" },
+  { key: "accepted", label: "Accepted" },
+  { key: "missed", label: "Missed" },
+];
+
+export default function RequestsPage() {
+  const { data: session } = useSession();
+  const panditId = session?.user?.id;
+
+  const [activeCategory, setActiveCategory] = useState("pending");
+  const [allRequests, setAllRequests] = useState([]);
+  const [panditData, setPanditData] = useState(null);
+  const [loading, setLoading] = useState(true);
   const [callData, setCallData] = useState(null);
   const [callerInfo, setCallerInfo] = useState(null);
   const [callingBack, setCallingBack] = useState(null);
-  const [loggingOut, setLoggingOut] = useState(false);
   const [forceEnd, setForceEnd] = useState(false);
-  const activeCallIdRef = useRef(null); // ✅ track active call id
-// ✅ load pending requests from DB
-useEffect(() => {
+  const activeCallIdRef = useRef(null);
+
+  // ✅ Load requests + pandit data
   async function loadRequests() {
     try {
-      const res = await fetch(
-        "/api/pandit/pending-requests"
-      );
+      const [dashboardRes, profileRes] = await Promise.all([
+        fetch("/api/pandit/dashboard"),
+        fetch("/api/pandit/profile"),
+      ]);
 
-      const data = await res.json();
+      const [dashboardData, profileData] = await Promise.all([
+        dashboardRes.json(),
+        profileRes.json(),
+      ]);
 
-      if (res.ok) {
-        setRequests(data.requests || []);
+      if (dashboardRes.ok) {
+        setAllRequests(dashboardData.calls || []);
+      }
+
+      if (profileRes.ok) {
+        setPanditData(profileData);
       }
     } catch (e) {
       console.error(e);
+    } finally {
+      setLoading(false);
     }
   }
 
-  loadRequests();
-}, []);
-  useSSE(`/api/events?panditId=${pandit.id}`, {
+  useEffect(() => {
+    if (panditId) loadRequests();
+  }, [panditId]);
+
+  // ✅ SSE for real-time updates
+  useSSE(`/api/events?panditId=${panditId}`, {
     "incoming-call": (data) => {
-      // ✅ Don't show request if already on a call
       if (activeCallIdRef.current) return;
       new Audio("/notif.mp3").play().catch(() => {});
-      setRequests(prev => {
-        if (prev.find(r => r.id === data.callId)) return prev;
-        return [...prev, { id: data.callId, user: data.user, createdAt: data.createdAt }];
+
+      setAllRequests((prev) => {
+        if (prev.find((r) => r.id === data.callId)) return prev;
+        return [
+          {
+            id: data.callId,
+            user: data.user,
+            createdAt: data.createdAt,
+            status: "INITIATED",
+            displayUsername: data.user?.username || "User",
+          },
+          ...prev,
+        ];
       });
     },
     "call-ended": (data) => {
-      // ✅ Remove from requests list
-      setRequests(prev => prev.filter(r => r.id !== data.callId));
-      // ✅ If this is the active call — force end AgoraCall
+      setAllRequests((prev) =>
+        prev.map((r) => (r.id === data.callId ? { ...r, status: "FAILED" } : r))
+      );
+
       if (activeCallIdRef.current === data.callId) {
         setForceEnd(true);
       }
     },
   });
 
-  async function handleCallBack(call) {
+  // ✅ Filter by category
+  const filteredRequests = allRequests.filter((req) => {
+    if (activeCategory === "all") return true;
+    if (activeCategory === "pending") return ["INITIATED", "RINGING"].includes(req.status);
+    if (activeCategory === "accepted") return ["ONGOING", "COMPLETED"].includes(req.status);
+    if (activeCategory === "missed") return req.status === "FAILED";
+    return true;
+  });
+
+  // ✅ Category counts
+  const categoryCounts = {
+    all: allRequests.length,
+    pending: allRequests.filter((r) => ["INITIATED", "RINGING"].includes(r.status)).length,
+    accepted: allRequests.filter((r) => ["ONGOING", "COMPLETED"].includes(r.status)).length,
+    missed: allRequests.filter((r) => r.status === "FAILED").length,
+  };
+
+  // ✅ Handle accept call
+  async function handleAccept(call) {
     setCallingBack(call.id);
     try {
       const res = await fetch("/api/call/pandit-initiate", {
@@ -64,19 +120,20 @@ useEffect(() => {
         body: JSON.stringify({ callId: call.id }),
       });
       const data = await res.json();
+
       if (res.ok) {
-        activeCallIdRef.current = call.id; // ✅ track active call
+        activeCallIdRef.current = call.id;
         setCallerInfo({
-          name: call.user?.username ?? "User",
+          name: call.displayUsername || call.user?.username || "User",
           speciality: call.user?.dob
             ? `DOB: ${new Date(call.user.dob).toLocaleDateString("en-IN")}`
             : "",
         });
         setCallData(data);
-        // remove only after accepted successfully
-setRequests(prev =>
-  prev.filter(c => c.id !== call.id)
-);
+
+        setAllRequests((prev) =>
+          prev.map((c) => (c.id === call.id ? { ...c, status: "ONGOING" } : c))
+        );
       } else {
         alert(data.error || "Failed to initiate call");
       }
@@ -87,8 +144,12 @@ setRequests(prev =>
     }
   }
 
-  async function handleReject(callId) {
-    setRequests(prev => prev.filter(c => c.id !== callId));
+  // ✅ Handle decline
+  async function handleDecline(callId) {
+    setAllRequests((prev) =>
+      prev.map((c) => (c.id === callId ? { ...c, status: "FAILED" } : c))
+    );
+
     await fetch("/api/call/reject", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -96,6 +157,7 @@ setRequests(prev =>
     });
   }
 
+  // ✅ If in call
   if (callData) {
     return (
       <AgoraCall
@@ -107,88 +169,58 @@ setRequests(prev =>
           setCallData(null);
           setCallerInfo(null);
           setForceEnd(false);
+          loadRequests();
         }}
       />
     );
   }
 
+  // ✅ Subheading text
+  const subheading = `${filteredRequests.length} ${
+    activeCategory === "all" ? "total" : activeCategory
+  } request${filteredRequests.length !== 1 ? "s" : ""}`;
+
   return (
     <div className="min-h-screen bg-background px-4 py-6 max-w-7xl mx-auto">
-      <div className="flex justify-between items-center mb-8">
-        <div className="flex items-center gap-4">
-          <div className="relative w-14 h-14 overflow-hidden rounded-full bg-gray-100 flex-shrink-0">
-            <Image
-              src={pandit.profilePic || "/default-avatar.png"}
-              alt={pandit.name}
-              width={56} height={56}
-              className="object-cover w-full h-full"
-              priority
-            />
-          </div>
-          <div>
-            <p className="text-xl font-medium text-main">Namaste, {pandit.name} 🙏</p>
-            <p className="text-sm text-secondary mt-0.5">
-              {requests.length > 0
-                ? `${requests.length} request${requests.length > 1 ? "s" : ""}`
-                : "Waiting for requests..."}
-            </p>
-          </div>
-        </div>
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2 px-2 py-1 bg-green-50 rounded-full">
-            <div className="w-2 h-2 rounded-full bg-primary-main animate-pulse" />
-            <span className="text-[10px] font-medium uppercase tracking-wider text-secondary">Online</span>
-          </div>
-          <button
-            onClick={() => { setLoggingOut(true); signOut({ callbackUrl: "/login" }); }}
-            disabled={loggingOut}
-            className="text-xs font-medium border border-black/10 px-4 py-1.5 rounded-full text-secondary hover:bg-black/5 disabled:opacity-50"
-          >
-            {loggingOut ? "Logging out..." : "Logout"}
-          </button>
-        </div>
-      </div>
+      {/* Header with Toggle */}
+      <RequestsHeader
+        heading="Call Requests"
+        subheading={subheading}
+        panditData={panditData}
+        showProfileOnMobile={true}
+      />
 
-      {requests.length === 0 && (
+      {/* Category Tabs */}
+      <CategoryTabs
+        categories={CATEGORIES}
+        activeCategory={activeCategory}
+        onCategoryChange={setActiveCategory}
+        counts={categoryCounts}
+      />
+
+      {/* Loading State */}
+      {loading && (
         <div className="text-center mt-24 text-secondary">
-          <p className="heading-h5 text-main mb-2">No requests right now</p>
-          <p className="caption">Waiting for users to connect</p>
+          <div className="inline-block w-8 h-8 border-4 border-primary-main/30 border-t-primary-main rounded-full animate-spin mb-4" />
+          <p className="caption">Loading requests...</p>
         </div>
       )}
 
+      {/* Empty State */}
+      {!loading && filteredRequests.length === 0 && (
+        <EmptyState category={activeCategory} />
+      )}
+
+      {/* Requests List */}
       <div className="flex flex-col gap-3">
-        {requests.map((call) => (
-          <div key={call.id} className="bg-secondary-main border border-black/10 rounded-[var(--R24)] p-4">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-11 h-11 rounded-full bg-primary-main/10 flex items-center justify-center text-primary-main font-medium text-lg">
-                {call.user?.username?.slice(0, 1).toUpperCase() ?? "U"}
-              </div>
-              <div>
-                <p className="text-sm font-medium text-main">{call.user?.username ?? "User"}</p>
-                <p className="text-xs text-secondary">
-                  DOB: {call.user?.dob ? new Date(call.user.dob).toLocaleDateString("en-IN") : "—"}
-                </p>
-              </div>
-              <span className="ml-auto text-xs text-secondary">
-                {new Date(call.createdAt).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}
-              </span>
-            </div>
-            <div className="flex gap-3">
-              <button
-                onClick={() => handleReject(call.id)}
-                className="flex-1 py-2.5 rounded-[var(--R16)] border border-black text-sm text-main"
-              >
-                Decline
-              </button>
-              <button
-                onClick={() => handleCallBack(call)}
-                disabled={callingBack === call.id}
-                className="flex-1 py-2.5 rounded-[var(--R16)] bg-primary-main text-white text-sm disabled:opacity-50"
-              >
-                {callingBack === call.id ? "Calling..." : "Call"}
-              </button>
-            </div>
-          </div>
+        {filteredRequests.map((call) => (
+          <RequestCard
+            key={call.id}
+            call={call}
+            onAccept={handleAccept}
+            onDecline={handleDecline}
+            isProcessing={callingBack === call.id}
+          />
         ))}
       </div>
     </div>

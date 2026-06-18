@@ -18,6 +18,7 @@ const panditLinks = [
   { label: "Requests",  href: "/pandit/requests", icon: "/icons/requests.svg" },
   { label: "History",   href: "/pandit/history",  icon: "/icons/history.svg" },
   { label: "Earnings",  href: "/pandit/earnings", icon: "/icons/earnings.svg" },
+  { label: "Profile",   href: "/pandit/profile",  icon: "/icons/profile.svg" },
 ];
 
 export default function MobileBottomNav() {

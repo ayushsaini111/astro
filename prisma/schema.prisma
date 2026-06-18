@@ -232,16 +232,33 @@ model Call {
 model Pandit {
   id          String   @id @default(cuid())
   name        String
-  email       String   @unique
-  speciality  String
+  username    String   @unique
+  password    String
+  email       String?  // ✅ NEW
+  phone       String?  // ✅ NEW
+  dob         DateTime? // ✅ NEW
+  about       String?  // ✅ NEW
+  speciality  String[] 
+  languages   String[] // ✅ NEW
+  profilePic  String?  
+  profilePicPublicId String? 
+  // ✅ NEW: Availability & Working Hours
+  startTime          String   @default("09:00")
+  endTime            String   @default("21:00")
+  breakTime          String   @default("13:00")
+  workingDays        String[] @default(["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]) // Store as array
+  
+  notificationsConsultationRequests Boolean @default(true)
+  notificationsMessages            Boolean @default(true)
+  notificationsReminders           Boolean @default(true)
+  notificationsPromotions          Boolean @default(false)
   ratePerMin  Float    @default(0)
-  profilePic  String?
   isAvailable Boolean  @default(true)
   createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt // ✅ NEW
 
   calls Call[]
 }
-
 ///////////////////////
 // CALL EVENTS
 ///////////////////////

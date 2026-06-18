@@ -21,6 +21,7 @@ const panditNavLinks = [
   { label: "Call Requests", href: "/pandit/requests" },
   { label: "History",       href: "/pandit/history" },
   { label: "Earnings",      href: "/pandit/earnings" },
+  { label: "Profile",      href: "/pandit/profile" },
 ];
 
 function ProfileCompletion({ user }) {

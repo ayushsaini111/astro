@@ -3,19 +3,16 @@ import { generateAgoraToken } from "@/lib/agora";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
 import { sendEvent } from "@/lib/sse";
 
 export async function POST(req) {
   const session = await getServerSession(authOptions);
-  const cookieStore = await cookies();
-  const cookieUserId = cookieStore.get("userId")?.value;
-  const panditEmail = session?.user?.email;
 
-  if (!panditEmail && !cookieUserId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (!panditEmail && cookieUserId) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  if (!session?.user?.id || session.user.role !== "pandit") {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
 
-  const pandit = await prisma.pandit.findUnique({ where: { email: panditEmail } });
+  const pandit = await prisma.pandit.findUnique({ where: { id: session.user.id } });
   if (!pandit) return NextResponse.json({ error: "Not a pandit" }, { status: 403 });
 
   const { callId } = await req.json();

@@ -7,7 +7,7 @@ export async function GET() {
   try {
     const session = await getServerSession(authOptions);
 
-    if (!session?.user?.email) {
+    if (!session?.user?.id || session.user.role !== "pandit") {
       return NextResponse.json(
         { error: "Unauthorized" },
         { status: 401 }
@@ -15,7 +15,7 @@ export async function GET() {
     }
 
     const pandit = await prisma.pandit.findUnique({
-      where: { email: session.user.email },
+      where: { id: session.user.id },
     });
 
     if (!pandit) {

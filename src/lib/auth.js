@@ -1,17 +1,19 @@
 import Google from "next-auth/providers/google";
 import CredentialsProvider from "next-auth/providers/credentials";
+import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
-
-const PANDIT_EMAILS = ["ayushsaini8008@gmail.com", "abhijeetdwivedi627@gmail.com"];
 
 export const authOptions = {
   providers: [
+    // ── USER: Google ────────────────────────────────────────────
     Google({
       clientId: process.env.GOOGLE_CLIENT_ID,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET,
     }),
 
+    // ── USER: Phone OTP ─────────────────────────────────────────
     CredentialsProvider({
+      id: "otp-credentials",
       name: "OTP",
       credentials: {
         phone: { label: "Phone", type: "text" },
@@ -24,9 +26,9 @@ export const authOptions = {
         const record = await prisma.oTPVerification.findFirst({
           where: {
             identifier: phone,
-            otp:        token,
-            verified:   true,
-            expiresAt:  { gt: new Date() },
+            otp: token,
+            verified: true,
+            expiresAt: { gt: new Date() },
           },
           include: { user: true },
         });
@@ -35,14 +37,55 @@ export const authOptions = {
 
         await prisma.oTPVerification.update({
           where: { id: record.id },
-          data:  { expiresAt: new Date(0) },
+          data: { expiresAt: new Date(0) },
         });
 
         return {
-          id:    record.user.id,
+          id: record.user.id,
           phone: record.user.phone,
-          role:  "user",
-          // ✅ do NOT cache username here — always read fresh from DB
+          role: "user",
+        };
+      },
+    }),
+
+    // ── PANDIT: login only — account is created on the other site ──
+    // This provider NEVER creates or modifies a Pandit row. It only
+    // reads the existing row (made elsewhere) and checks the password.
+    CredentialsProvider({
+      id: "pandit-credentials",
+      name: "Pandit Login",
+      credentials: {
+        username: { label: "Username", type: "text" },
+        password: { label: "Password", type: "password" },
+      },
+      async authorize(credentials) {
+        const { username, password } = credentials ?? {};
+        if (!username || !password) return null;
+
+        const pandit = await prisma.pandit.findUnique({
+          where: { username },
+        });
+        if (!pandit?.password) return null;
+
+        // Password may be bcrypt-hashed or plain text depending on how
+        // the other site stored it. Try bcrypt first; if the stored
+        // value isn't a valid bcrypt hash, bcrypt.compare just returns
+        // false (it won't throw), so fall back to a direct string check.
+        let valid = false;
+        try {
+          valid = await bcrypt.compare(password, pandit.password);
+        } catch {
+          valid = false;
+        }
+        if (!valid && pandit.password === password) {
+          valid = true;
+        }
+        if (!valid) return null;
+
+        return {
+          id: pandit.id,
+          username: pandit.username,
+          role: "pandit",
         };
       },
     }),
@@ -51,28 +94,28 @@ export const authOptions = {
   session: { strategy: "jwt" },
 
   callbacks: {
-    // ✅ jwt — only store stable identifiers, never cache username
     async jwt({ token, user, trigger }) {
       if (user) {
-        token.id    = user.id;
-        token.phone = user.phone ?? null;
-        token.role  = user.role  ?? "user";
-        token.email = user.email ?? null;
-        // ✅ intentionally NOT storing username — session reads it fresh from DB
+        token.id = user.id;
+        token.role = user.role ?? "user";
+
+        if (user.role === "pandit") {
+          token.username = user.username ?? null;
+          token.phone = null;
+          token.email = null;
+        } else {
+          token.phone = user.phone ?? null;
+          token.email = user.email ?? null;
+        }
       }
 
-      // ✅ When updateSession() is called client-side, re-fetch username from DB
-      if (trigger === "update") {
+      if (trigger === "update" && token.role !== "pandit") {
         if (token.phone && !token.email) {
-          const dbUser = await prisma.user.findUnique({
-            where: { phone: token.phone },
-          });
+          const dbUser = await prisma.user.findUnique({ where: { phone: token.phone } });
           token.username = dbUser?.username ?? null;
         }
         if (token.email) {
-          const dbUser = await prisma.user.findUnique({
-            where: { email: token.email },
-          });
+          const dbUser = await prisma.user.findUnique({ where: { email: token.email } });
           token.username = dbUser?.username ?? null;
         }
       }
@@ -80,33 +123,20 @@ export const authOptions = {
       return token;
     },
 
+    // Google sign-in is User-only — no Pandit logic here at all.
     async signIn({ user, account }) {
       if (account?.provider !== "google") return true;
       try {
-        const isPandit = PANDIT_EMAILS.includes(user.email);
-        if (isPandit) {
-          await prisma.pandit.upsert({
-            where:  { email: user.email },
-            update: { name: user.name ?? "Pandit", profilePic: user.image ?? null },
-            create: {
-              email:      user.email,
-              name:       user.name ?? "Pandit",
-              profilePic: user.image ?? null,
-              speciality: "Vedic Astrology",
-            },
-          });
-        } else {
-          await prisma.user.upsert({
-            where:  { email: user.email },
-            update: { profilePic: user.image ?? null },
-            create: {
-              email:      user.email,
-              username:   null,
-              isVerified: true,
-              profilePic: user.image ?? null,
-            },
-          });
-        }
+        await prisma.user.upsert({
+          where: { email: user.email },
+          update: { profilePic: user.image ?? null },
+          create: {
+            email: user.email,
+            username: null,
+            isVerified: true,
+            profilePic: user.image ?? null,
+          },
+        });
         return true;
       } catch (err) {
         console.error("❌ signIn error:", err.message);
@@ -114,54 +144,56 @@ export const authOptions = {
       }
     },
 
-    // ✅ session — always read username fresh from DB, never from stale JWT cache
     async session({ session, token }) {
-      session.user.id    = token.id    ?? null;
-      session.user.phone = token.phone ?? null;
-      session.user.role  = token.role  ?? "user";
+      session.user.id = token.id ?? null;
+      session.user.role = token.role ?? "user";
 
-      // Google user
-      if (token.email) {
-        const isPandit = PANDIT_EMAILS.includes(token.email);
-        if (isPandit) {
-          const pandit = await prisma.pandit.findUnique({
-            where: { email: token.email },
-          });
-          session.user.role     = "pandit";
-          session.user.panditId = pandit?.id ?? null;
-        } else {
-          const dbUser = await prisma.user.findUnique({
-            where: { email: token.email },
-          });
-          session.user.id         = dbUser?.id         ?? token.id;
-          session.user.username   = dbUser?.username   ?? null; // ✅ always fresh
-          session.user.dob        = dbUser?.dob        ?? null;
-          session.user.profilePic = dbUser?.profilePic ?? null;
-          session.user.phone      = dbUser?.phone      ?? null;
-          session.user.gender     = dbUser?.gender     ?? null;
-          session.user.address    = dbUser?.address    ?? null;
-        }
+      // ── Pandit session — read-only, no writes ────────────────
+      if (token.role === "pandit") {
+        const pandit = await prisma.pandit.findUnique({
+          where: { id: token.id },
+        });
+        session.user.username = pandit?.username ?? token.username ?? null;
+        session.user.name = pandit?.name ?? null;
+        session.user.profilePic = pandit?.profilePic ?? null;
+        session.user.speciality = pandit?.speciality ?? [];
+        session.user.ratePerMin = pandit?.ratePerMin ?? null;
+        session.user.isAvailable = pandit?.isAvailable ?? null;
+        return session;
       }
 
-      // OTP user
-      if (token.phone && !token.email) {
-        const dbUser = await prisma.user.findUnique({
-          where: { phone: token.phone },
-        });
-        session.user.id         = dbUser?.id         ?? token.id;
-        session.user.username   = dbUser?.username   ?? null; // ✅ always fresh
-        session.user.phone      = dbUser?.phone      ?? token.phone;
+      // ── User session (Google) ───────────────────────────────
+      if (token.email) {
+        const dbUser = await prisma.user.findUnique({ where: { email: token.email } });
+        session.user.id = dbUser?.id ?? token.id;
+        session.user.username = dbUser?.username ?? null;
+        session.user.dob = dbUser?.dob ?? null;
         session.user.profilePic = dbUser?.profilePic ?? null;
-        session.user.dob        = dbUser?.dob        ?? null;
-        session.user.gender     = dbUser?.gender     ?? null;
-        session.user.address    = dbUser?.address    ?? null;
-        session.user.createdAt  = dbUser?.createdAt  ?? null;
+        session.user.phone = dbUser?.phone ?? null;
+        session.user.gender = dbUser?.gender ?? null;
+        session.user.address = dbUser?.address ?? null;
+      }
+
+      // ── User session (Phone OTP) ─────────────────────────────
+      if (token.phone && !token.email) {
+        const dbUser = await prisma.user.findUnique({ where: { phone: token.phone } });
+        session.user.id = dbUser?.id ?? token.id;
+        session.user.username = dbUser?.username ?? null;
+        session.user.phone = dbUser?.phone ?? token.phone;
+        session.user.profilePic = dbUser?.profilePic ?? null;
+        session.user.dob = dbUser?.dob ?? null;
+        session.user.gender = dbUser?.gender ?? null;
+        session.user.address = dbUser?.address ?? null;
+        session.user.createdAt = dbUser?.createdAt ?? null;
       }
 
       return session;
     },
   },
 
-  pages: { signIn: "/login", error: "/login" },
+  pages: {
+    signIn: "/login",
+    error: "/login",
+  },
   secret: process.env.NEXTAUTH_SECRET,
 };
