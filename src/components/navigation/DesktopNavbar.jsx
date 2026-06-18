@@ -67,9 +67,11 @@ export default function DesktopNavbar() {
     return () => document.removeEventListener("mousedown", handleClick);
   }, []);
 
+  // ✅ FIXED: Redirect based on role
   async function handleLogout() {
     setDropdownOpen(false);
-    await signOut({ callbackUrl: "/login" });
+    const callbackUrl = isPandit ? "/pandit/login" : "/login";
+    await signOut({ callbackUrl });
   }
 
   const menuItems = isPandit ? [
