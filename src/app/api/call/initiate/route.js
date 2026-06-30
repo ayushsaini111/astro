@@ -6,7 +6,7 @@ import { randomBytes } from "crypto";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { sendEvent } from "@/lib/sse";
-
+import { messaging } from "@/lib/firebaseAdmin";
 const FREE_CALL_SECONDS = 5;
 
 export async function POST(req) {
@@ -95,7 +95,64 @@ export async function POST(req) {
     user: { username: user.username, dob: user.dob },
     createdAt: call.createdAt,
   });
+// Get pandit's FCM token
+const pandit = await prisma.pandit.findUnique({
+  where: {
+    id: panditId,
+  },
+  select: {
+    fcmToken: true,
+    name: true,
+  },
+});
 
+console.log("=================================");
+console.log("Pandit:", pandit?.name);
+console.log("FCM Token:", pandit?.fcmToken);
+console.log("=================================");
+
+if (pandit?.fcmToken) {
+  try {
+   console.log("🔥 Sending FCM Notification...");
+
+await messaging.send({
+  token: pandit.fcmToken,
+
+  notification: {
+    title: "New Consultation Request",
+    body: `${user.username} wants to consult you.`,
+  },
+
+  android: {
+    priority: "high",
+
+    notification: {
+      channelId: "default",
+      sound: "default",
+    },
+  },
+
+  apns: {
+    payload: {
+      aps: {
+        sound: "default",
+      },
+    },
+  },
+});
+
+console.log("✅ Notification Sent");
+console.log(response);
+
+    console.log("✅ FCM SENT");
+    console.log(response);
+  } catch (err) {
+    console.log("❌ FCM FAILED");
+    console.log(err);
+  }
+} else {
+  console.log("❌ No FCM token found for pandit");
+}
   return NextResponse.json({
     callId: call.id,
     channelName,

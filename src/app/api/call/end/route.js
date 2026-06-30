@@ -53,19 +53,46 @@ export async function POST(req) {
   let freeSecondsUsed = 0;
   let paidSecondsUsed = 0;
 
-  async function deductSeconds(seconds) {
-    if (seconds <= 0) return 0;
-    const activePlan = await prisma.userPlan.findFirst({
+  // =========================================================
+  // ACCURATE MULTI-PLAN DEDUCTION
+  // Walks through every active plan (soonest-expiring first) and
+  // draws from each in turn until the full duration is accounted
+  // for. Previously this only deducted from a single plan and
+  // silently dropped any overflow seconds if that plan ran out
+  // mid-call — undercharging the user.
+  // =========================================================
+
+  async function deductSeconds(totalSeconds) {
+    if (totalSeconds <= 0) return 0;
+
+    let remainingToDeduct = totalSeconds;
+    let totalDeducted = 0;
+
+    const activePlans = await prisma.userPlan.findMany({
       where: { userId: call.userId, isActive: true, endDate: { gte: now }, remainingSeconds: { gt: 0 } },
       orderBy: { endDate: "asc" },
     });
-    if (!activePlan) return 0;
-    const toDeduct = Math.min(seconds, activePlan.remainingSeconds);
-    await prisma.userPlan.update({
-      where: { id: activePlan.id },
-      data: { remainingSeconds: { decrement: toDeduct }, perDayUsedSeconds: { increment: toDeduct }, lastUsedDate: now },
-    });
-    return toDeduct;
+
+    for (const plan of activePlans) {
+      if (remainingToDeduct <= 0) break;
+
+      const toDeduct = Math.min(remainingToDeduct, plan.remainingSeconds);
+      if (toDeduct <= 0) continue;
+
+      await prisma.userPlan.update({
+        where: { id: plan.id },
+        data: {
+          remainingSeconds: { decrement: toDeduct },
+          perDayUsedSeconds: { increment: toDeduct },
+          lastUsedDate: now,
+        },
+      });
+
+      totalDeducted += toDeduct;
+      remainingToDeduct -= toDeduct;
+    }
+
+    return totalDeducted;
   }
 
   if (call.isFreeCall) {

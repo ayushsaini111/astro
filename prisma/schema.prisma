@@ -256,7 +256,7 @@ model Pandit {
   isAvailable Boolean  @default(true)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt // ✅ NEW
-
+  fcmToken    String?
   calls Call[]
 }
 ///////////////////////

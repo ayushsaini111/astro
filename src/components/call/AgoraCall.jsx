@@ -31,51 +31,40 @@ export default function AgoraCall({
 
   const timerRef = useRef(null);
   const freeTimerRef = useRef(null);
-  const balanceCheckRef = useRef(null);
 
   const joinedRef = useRef(false);
   const callStartRef = useRef(null);
   const endingRef = useRef(false);
   const wasConnectedRef = useRef(false);
   const freeCallEndedRef = useRef(false);
+  const timerStartedRef = useRef(false); // prevents timer re-init on reconnect flaps
 
   const router = useRouter();
 
   // =========================================================
-  // GET RAW REMAINING SECONDS
+  // GET RAW REMAINING SECONDS (still used only for free-call switch-over)
   // =========================================================
 
-async function getRawRemainingSeconds() {
-  try {
-    const res = await fetch("/api/plans/status");
+  async function getRawRemainingSeconds() {
+    try {
+      const res = await fetch("/api/plans/status");
 
-    // ✅ don't crash on unauthorized
-    if (!res.ok) {
-      console.error(
-        "Plans API failed:",
-        res.status
+      if (!res.ok) {
+        console.error("Plans API failed:", res.status);
+        return Infinity;
+      }
+
+      const data = await res.json();
+
+      return (data.activePlans ?? []).reduce(
+        (sum, p) => sum + (p.remainingSeconds ?? 0),
+        0
       );
-
+    } catch (e) {
+      console.error("Plans API error:", e);
       return Infinity;
     }
-
-    const data = await res.json();
-
-    return (data.activePlans ?? []).reduce(
-      (sum, p) =>
-        sum + (p.remainingSeconds ?? 0),
-      0
-    );
-  } catch (e) {
-    console.error(
-      "Plans API error:",
-      e
-    );
-
-    // ✅ NEVER end call on API failure
-    return Infinity;
   }
-}
 
   // =========================================================
   // HANDLE END
@@ -91,7 +80,6 @@ async function getRawRemainingSeconds() {
 
     clearInterval(timerRef.current);
     clearInterval(freeTimerRef.current);
-    clearInterval(balanceCheckRef.current);
 
     const exactDuration = callStartRef.current
       ? Math.floor((Date.now() - callStartRef.current) / 1000)
@@ -106,9 +94,7 @@ async function getRawRemainingSeconds() {
     try {
       await fetch("/api/call/end", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           callId: callData.callId,
           clientDuration: exactDuration,
@@ -149,15 +135,19 @@ async function getRawRemainingSeconds() {
   }, [ready, callData, joinCall]);
 
   // =========================================================
-  // REMOTE JOINED
+  // REMOTE JOINED — starts the timer ONCE, ignores reconnect flaps
   // =========================================================
 
   useEffect(() => {
     if (!remoteJoined || !callData?.callId) return;
 
     wasConnectedRef.current = true;
-
     setStatus("connected");
+
+    if (timerStartedRef.current) {
+      return;
+    }
+    timerStartedRef.current = true;
 
     fetch(`/api/call/status?callId=${callData.callId}`)
       .then((r) => r.json())
@@ -168,75 +158,57 @@ async function getRawRemainingSeconds() {
 
         callStartRef.current = serverStart;
 
-        setDuration(
-          Math.floor((Date.now() - serverStart) / 1000)
-        );
+        setDuration(Math.floor((Date.now() - serverStart) / 1000));
 
         timerRef.current = setInterval(() => {
-          setDuration(
-            Math.floor((Date.now() - callStartRef.current) / 1000)
-          );
+          setDuration(Math.floor((Date.now() - callStartRef.current) / 1000));
         }, 500);
 
         // =========================================================
-        // FREE CALL TIMER
+        // FREE CALL TIMER — only governs the free 5s window, then
+        // either silently continues on the plan or, if there is truly
+        // zero balance, ends the call. This is NOT a recurring poll.
         // =========================================================
 
         if (callData.isFreeCall && !freeCallEndedRef.current) {
           freeTimerRef.current = setInterval(async () => {
-            if (
-              freeCallEndedRef.current ||
-              endingRef.current
-            ) {
+            if (freeCallEndedRef.current || endingRef.current) {
               clearInterval(freeTimerRef.current);
               return;
             }
 
-            const elapsed =
-              Date.now() - callStartRef.current;
+            const elapsed = Date.now() - callStartRef.current;
 
             if (elapsed >= FREE_CALL_SECONDS * 1000) {
               freeCallEndedRef.current = true;
-
               clearInterval(freeTimerRef.current);
 
               try {
-                const rawSeconds =
-                  await getRawRemainingSeconds();
+                const rawSeconds = await getRawRemainingSeconds();
 
                 if (rawSeconds > 0) {
                   setWarning("switching_to_plan");
-
-                  setTimeout(() => {
-                    setWarning(null);
-                  }, 3000);
+                  setTimeout(() => setWarning(null), 3000);
                 } else {
                   setWarning("no_balance");
-
                   setTimeout(async () => {
                     await handleEnd();
                     router.push("/plans");
                   }, 1500);
                 }
               } catch (e) {
-  console.error(
-    "Balance API failed:",
-    e
-  );
-}
+                console.error("Balance API failed:", e);
+              }
             }
           }, 100);
         }
       })
       .catch(() => {
         callStartRef.current = Date.now();
-
         setDuration(0);
 
         timerRef.current = setInterval(() => {
-          setDuration(
-            Math.floor((Date.now() - callStartRef.current) / 1000)
-          );
+          setDuration(Math.floor((Date.now() - callStartRef.current) / 1000));
         }, 500);
       });
 
@@ -244,6 +216,7 @@ async function getRawRemainingSeconds() {
       clearInterval(timerRef.current);
       clearInterval(freeTimerRef.current);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [remoteJoined, callData, handleEnd, router]);
 
   // =========================================================
@@ -265,11 +238,7 @@ async function getRawRemainingSeconds() {
   // =========================================================
 
   useEffect(() => {
-    if (
-      joined &&
-      !remoteJoined &&
-      !wasConnectedRef.current
-    ) {
+    if (joined && !remoteJoined && !wasConnectedRef.current) {
       setStatus("waiting");
     }
   }, [joined, remoteJoined]);
@@ -293,90 +262,48 @@ async function getRawRemainingSeconds() {
 
     return () => clearTimeout(timeout);
   }, [joined, remoteJoined, handleEnd]);
-
-  // =========================================================
-  // BALANCE CHECK
-  // =========================================================
-
 // =========================================================
-// BALANCE CHECK ONLY FOR USER SIDE
+// AUTO END WHEN PLAN EXPIRES
 // =========================================================
 
 useEffect(() => {
-  // ✅ only user side should check balance
-  // pandit side does not have user balance APIs
-  if (
-    !remoteJoined ||
-    callerInfo?.role === "pandit"
-  ) {
-    return;
-  }
+  if (!remoteJoined) return;
 
-  async function checkBalance() {
-    if (endingRef.current) return;
+  const interval = setInterval(async () => {
+    const res = await fetch("/api/plans/status");
+    const data = await res.json();
 
-    try {
-      // ✅ get actual remaining seconds
-   const rawSeconds = await getRawRemainingSeconds();
-
-console.log(
-  "BALANCE CHECK:",
-  { rawSeconds, isFreeCall: callData?.isFreeCall, callerRole: callerInfo?.role }
-);
-
-      // ✅ during free call don't check plan yet
-      if (
-        callData?.isFreeCall &&
-        !freeCallEndedRef.current
-      ) {
-        return;
-      }
-
-      // ✅ no balance left
-      if (rawSeconds <= 0) {
-        clearInterval(balanceCheckRef.current);
-
-        setWarning("no_balance");
-
-        setTimeout(async () => {
-          await handleEnd();
-
-          router.push("/plans");
-        }, 1500);
-      }
-    } catch (e) {
-      // ❌ IMPORTANT
-      // NEVER end call on API failure
-      console.error(
-        "Balance check failed:",
-        e
-      );
-    }
-  }
-
-  // first check after 10 sec
-  const firstCheck = setTimeout(() => {
-    checkBalance();
-
-    // repeat every 10 sec
-    balanceCheckRef.current = setInterval(
-      checkBalance,
-      10000
+    const remaining = (data.activePlans ?? []).reduce(
+      (sum, p) => sum + (p.remainingSeconds ?? 0),
+      0
     );
-  }, 10000);
 
-  return () => {
-    clearTimeout(firstCheck);
+    if (remaining <= 0) {
+      clearInterval(interval);
 
-    clearInterval(balanceCheckRef.current);
-  };
-}, [
-  remoteJoined,
-  callerInfo,
-  callData,
-  handleEnd,
-  router,
-]);
+      setWarning("no_balance");
+
+      setTimeout(async () => {
+        await handleEnd();
+        router.push("/plans");
+      }, 1000);
+    }
+  }, 1000);
+
+  return () => clearInterval(interval);
+
+}, [remoteJoined]);
+  // =========================================================
+  // (Removed) BALANCE CHECK POLLING
+  // Previously polled /api/plans/status every 30s and ended the call
+  // if rawSeconds <= 0. Removed per request — calls now only end on:
+  //   - user/pandit pressing End
+  //   - remote side truly leaving
+  //   - no answer within 60s
+  //   - the free-call 5s window expiring with zero balance
+  // Actual billing is still settled correctly server-side in
+  // /api/call/end, which deducts exactly the real call duration.
+  // =========================================================
 
   // =========================================================
   // FORMAT TIME
@@ -385,18 +312,11 @@ console.log(
   function formatTime(s) {
     return `${Math.floor(s / 60)
       .toString()
-      .padStart(2, "0")}:${(s % 60)
-      .toString()
-      .padStart(2, "0")}`;
+      .padStart(2, "0")}:${(s % 60).toString().padStart(2, "0")}`;
   }
 
-  const name =
-    callerInfo?.name ??
-    callerInfo?.username ??
-    "Connected";
-
+  const name = callerInfo?.name ?? callerInfo?.username ?? "Connected";
   const initials = name.slice(0, 2).toUpperCase();
-
   const speciality = callerInfo?.speciality ?? "";
 
   const statusText = {
@@ -406,15 +326,11 @@ console.log(
     ending: "Ending call...",
   }[status];
 
-  const statusColor =
-    status === "connected"
-      ? "#34d399"
-      : "#94a3b8";
+  const statusColor = status === "connected" ? "#34d399" : "#94a3b8";
 
   const warningText = {
     no_balance: "⛔ Plan over. Ending call...",
-    switching_to_plan:
-      "✅ Free call over. Continuing on your plan.",
+    switching_to_plan: "✅ Free call over. Continuing on your plan.",
     no_answer: "📵 No answer. Ending call...",
     call_cancelled: "📵 Call ended by other side",
   }[warning];

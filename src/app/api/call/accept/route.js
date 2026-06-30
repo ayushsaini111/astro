@@ -35,17 +35,20 @@ export async function POST(req) {
     const now = new Date();
     const freeUsage = await prisma.freeCallUsage.findUnique({ where: { userId } });
 
-    const activePlan = await prisma.userPlan.findFirst({
-      where: {
-        userId,
-        isActive: true,
-        endDate: { gte: now },
-        remainingSeconds: { gt: 0 },
-      },
-      orderBy: { endDate: "asc" },
-    });
+  const activePlans = await prisma.userPlan.findMany({
+  where: {
+    userId,
+    isActive: true,
+    endDate: { gte: now },
+    remainingSeconds: { gt: 0 },
+  },
+});
 
-    const hasFreeCall = !freeUsage && !activePlan;
+const totalSeconds = activePlans.reduce(
+  (sum, plan) => sum + plan.remainingSeconds,
+  0
+);
+    const hasFreeCall = !freeUsage && activePlans.length === 0;
 
     const uid = Math.floor(Math.random() * 100000);
     const token = generateAgoraToken(call.channelName, uid);
@@ -55,16 +58,29 @@ export async function POST(req) {
       data: { status: "ONGOING", startTime: now },
     });
 
-    return Response.json({
-      callId: call.id,
-      channelName: call.channelName,
-      token,
-      uid,
-      appId: process.env.AGORA_APP_ID,
-      pandit: call.pandit,
-      isFreeCall: hasFreeCall,                          // ✅ added
-      planSecondsLeft: activePlan?.remainingSeconds ?? 0, // ✅ added
-    });
+const expiryTime = Date.now() + totalSeconds * 1000;
+
+console.log("================================");
+console.log("CALL ACCEPTED");
+console.log("User:", userId);
+console.log("Total Plan Seconds:", totalSeconds);
+console.log("Has Free Call:", hasFreeCall);
+console.log("Expiry Time:", new Date(expiryTime));
+console.log("================================");
+
+return Response.json({
+  callId: call.id,
+  channelName: call.channelName,
+  token,
+  uid,
+  appId: process.env.AGORA_APP_ID,
+  pandit: call.pandit,
+
+  // important
+  isFreeCall: hasFreeCall,
+  planSecondsLeft: totalSeconds,
+  expiryTime,
+});
 
   } catch (err) {
     console.error("❌ ACCEPT API ERROR:", err.message);

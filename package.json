@@ -16,6 +16,7 @@
     "agora-token": "^2.0.5",
     "bcryptjs": "^3.0.3",
     "cloudinary": "^2.10.0",
+    "firebase-admin": "^14.1.0",
     "lucide-react": "^1.16.0",
     "next": "16.2.6",
     "next-auth": "^4.24.14",
@@ -28,6 +29,7 @@
     "twilio": "^6.0.2"
   },
   "devDependencies": {
+    "@react-native-community/cli": "^20.1.3",
     "@tailwindcss/postcss": "^4",
     "eslint": "^9",
     "eslint-config-next": "16.2.6",
