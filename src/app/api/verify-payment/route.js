@@ -1,6 +1,6 @@
 import crypto from "crypto";
 import { NextResponse } from "next/server";
-import prisma from "@/lib/prisma";
+import {prisma} from "@/lib/prisma";
 import { getTimeSlotEnum, getPoojaModeEnum } from "@/lib/timeSlots";
 
 export async function POST(request) {
