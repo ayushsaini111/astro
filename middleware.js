@@ -2,29 +2,32 @@
 import { withAuth } from "next-auth/middleware";
 
 export default withAuth(
-  function middleware(req) {
-    console.log("🔒 Middleware check:", req.nextUrl.pathname, req.nextauth.token?.role);
-  },
+  function middleware(req) {},
   {
     callbacks: {
       authorized: ({ token, req }) => {
         const { pathname } = req.nextUrl;
 
-        if (pathname.startsWith('/pandit/login') || 
-            pathname.startsWith('/login') ||
-            pathname.startsWith('/api/auth') ||
-            pathname.startsWith('/backend') ||  // ✅ ADD THIS LINE
-            pathname === '/') {
+        // ✅ Always public
+        if (
+          pathname.startsWith("/login") ||
+          pathname.startsWith("/pandit/login") ||
+          pathname.startsWith("/api/") ||
+          pathname.startsWith("/auth/") ||
+          pathname.startsWith("/backend/") ||
+          pathname === "/"
+        ) {
           return true;
         }
 
-        if (pathname.startsWith('/pandit')) {
-          return token?.role === 'pandit';
+        // Pandit-only
+        if (pathname.startsWith("/pandit")) {
+          return token?.role === "pandit";
         }
 
-        if (pathname.startsWith('/dashboard') || 
-            pathname.startsWith('/profile')) {
-          return token?.role === 'user';
+        // User-only
+        if (pathname.startsWith("/dashboard") || pathname.startsWith("/profile")) {
+          return !!token;
         }
 
         return true;
@@ -35,9 +38,6 @@ export default withAuth(
 
 export const config = {
   matcher: [
-    '/pandit/:path*',
-    '/dashboard/:path*',
-    '/profile/:path*',
-    '/((?!api|backend|_next/static|_next/image|favicon.ico).*)',  // ✅ ADD backend HERE
-  ]
+    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|mp3|mp4|woff2?|ttf|otf)$).*)",
+  ],
 };
