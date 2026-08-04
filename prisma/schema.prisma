@@ -19,12 +19,6 @@ enum CallStatus {
   FAILED
 }
 
-enum PaymentStatus {
-  PENDING
-  SUCCESS
-  FAILED
-}
-
 enum PlanType {
   TOPUP
   MONTHLY
@@ -37,46 +31,183 @@ enum BillingType {
   WALLET
 }
 
+enum PoojaMode {
+  VIDEO_CALL
+  AT_HOME
+}
+
+enum TimeSlot {
+  SLOT_8_12
+  SLOT_12_15
+  SLOT_15_19
+  SLOT_19_22
+}
+
+enum BookingStatus {
+  PENDING
+  CONFIRMED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+  REFUNDED
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  FAILED
+  REFUNDED
+  SUCCESS
+}
+
+enum AuthProvider {
+  PHONE
+  GOOGLE
+}
+
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+}
+
 ///////////////////////
-// USER
+// USER (merged)
 ///////////////////////
 
 model User {
-  id         String    @id @default(cuid())
-  username   String?   @unique
-  email      String?   @unique
-  phone      String?   @unique
-  dob        DateTime?
-   gender     String?
-  address    String?
-  profilePic String?
-  isVerified Boolean   @default(false)
-  isBlocked  Boolean   @default(false)
-  createdAt  DateTime  @default(now())
-  updatedAt  DateTime  @updatedAt
-  deletedAt  DateTime?
+  id       String  @id @default(cuid())
 
+  // Auth
+  phone    String?  @unique @db.VarChar(10)
+  email    String?  @unique
+  provider AuthProvider @default(PHONE)
+
+  // Profile
+  name       String?
+  username   String?  @unique
+  image      String?
+  profilePic String?
+  dob        DateTime?
+  gender     Gender?
+
+  // Address
+  houseNo   String?
+  address   String?
+  landmark  String?
+  pinCode   String?  @db.VarChar(6)
+
+  // Status
+  isVerified             Boolean @default(false)
+  isBlocked              Boolean @default(false)
+  isProfileCompleted     Boolean @default(false)
+  hasCompletedOnboarding Boolean @default(false)
+
+  // Welcome Offer
+  freeCallPopupShown Boolean @default(false)
+  freeCallMinutes    Int     @default(5)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  // Relations
   wallet        Wallet?
   sessions      Session[]
   devices       Device[]
   otpRequests   OTPVerification[]
   transactions  Transaction[]
-  orders        Order[]
   calls         Call[]
+   orders        Order[] 
   plans         UserPlan[]
-  freeCallUsage FreeCallUsage?   // ✅ track free 10-min call
+  freeCallUsage FreeCallUsage?
+  bookings      Booking[]
+
+  @@index([phone])
+  @@index([email])
+}
+
+///////////////////////
+// OTP
+///////////////////////
+
+model OTPVerification {
+  id         String   @id @default(cuid())
+  identifier String
+  otp        String
+  attempts   Int      @default(0)
+  verified   Boolean  @default(false)
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  userId     String?
+
+  user User? @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([identifier])
+}
+
+///////////////////////
+// BOOKING
+///////////////////////
+
+model Booking {
+  id        String @id @default(cuid())
+  bookingId String @unique
+  userId    String
+  user      User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  poojaId    Int
+  poojaTitle String
+  poojaMode  PoojaMode
+  poojaImage String?
+  duration   String?
+
+  amount        Int
+  originalPrice Int?
+  discount      Int?
+
+  customerName  String
+  customerPhone String @db.VarChar(10)
+  customerEmail String
+
+  houseNo  String?
+  address  String?
+  landmark String?
+  pinCode  String? @db.VarChar(6)
+
+  scheduledDate String
+  timeSlot      TimeSlot
+
+  razorpayOrderId   String  @unique
+  razorpayPaymentId String? @unique
+  razorpaySignature String?
+
+  status        BookingStatus @default(CONFIRMED)
+  paymentStatus PaymentStatus @default(PAID)
+
+  specialRequests String?
+  panditNotes     String?
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  completedAt DateTime?
+  cancelledAt DateTime?
+
+  @@index([userId])
+  @@index([bookingId])
+  @@index([scheduledDate])
+  @@index([status])
 }
 
 ///////////////////////
 // FREE CALL USAGE
-// One per user — used to track if 10-min free call is consumed
 ///////////////////////
 
 model FreeCallUsage {
-  id      String   @id @default(cuid())
-  userId  String   @unique
-  callId  String
-  usedAt  DateTime @default(now())
+  id     String   @id @default(cuid())
+  userId String   @unique
+  callId String
+  usedAt DateTime @default(now())
 
   user User @relation(fields: [userId], references: [id])
 }
@@ -114,25 +245,6 @@ model Session {
 }
 
 ///////////////////////
-// OTP
-///////////////////////
-
-model OTPVerification {
-  id         String   @id @default(cuid())
-  identifier String
-  otp        String
-  attempts   Int      @default(0)
-  expiresAt  DateTime
-  verified   Boolean  @default(false)
-  createdAt  DateTime @default(now())
-
-  user   User?   @relation(fields: [userId], references: [id])
-  userId String?
-
-  @@index([identifier])
-}
-
-///////////////////////
 // WALLET
 ///////////////////////
 
@@ -156,8 +268,8 @@ model Transaction {
   walletId String?
 
   amount  Float
-  type    String // CREDIT / DEBIT
-  purpose String // CALL / ORDER / TOPUP
+  type    String
+  purpose String
 
   status PaymentStatus
 
@@ -188,31 +300,29 @@ model PaymentLog {
 ///////////////////////
 
 model Call {
-  id String @id @default(cuid())
-
-  userId   String?
-  user     User?   @relation(fields: [userId], references: [id])
+  id      String  @id @default(cuid())
+  userId  String?
+  user    User?   @relation(fields: [userId], references: [id])
   panditId String
   pandit   Pandit @relation(fields: [panditId], references: [id])
 
-  channelName String
-  agoraToken  String?
-  type        String // VOICE / VIDEO
+  channelName     String
+  agoraToken      String?
+  type            String
   deletedUsername String?
-  // ✅ Billing
+
   billingType   BillingType @default(PLAN)
   ratePerMinute Float       @default(0)
-  isFreeCall    Boolean     @default(false) // ✅ was this the free 10-min call?
-  freeSeconds   Int         @default(0)     // ✅ how many seconds were free
-  paidSeconds   Int         @default(0)     // ✅ how many seconds were charged
+  isFreeCall    Boolean     @default(false)
+  freeSeconds   Int         @default(0)
+  paidSeconds   Int         @default(0)
 
   status    CallStatus @default(INITIATED)
-
   startTime DateTime?
   endTime   DateTime?
 
-  duration        Int?   // total seconds
-  billableSeconds Int?   // seconds actually charged
+  duration        Int?
+  billableSeconds Int?
   totalCost       Float? @default(0)
 
   autoEnded Boolean @default(false)
@@ -230,35 +340,39 @@ model Call {
 ///////////////////////
 
 model Pandit {
-  id          String   @id @default(cuid())
-  name        String
-  username    String   @unique
-  password    String
-  email       String?  // ✅ NEW
-  phone       String?  // ✅ NEW
-  dob         DateTime? // ✅ NEW
-  about       String?  // ✅ NEW
-  speciality  String[] 
-  languages   String[] // ✅ NEW
-  profilePic  String?  
-  profilePicPublicId String? 
-  // ✅ NEW: Availability & Working Hours
-  startTime          String   @default("09:00")
-  endTime            String   @default("21:00")
-  breakTime          String   @default("13:00")
-  workingDays        String[] @default(["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]) // Store as array
-  
+  id                 String    @id @default(cuid())
+  name               String
+  username           String    @unique
+  password           String
+  email              String?
+  phone              String?
+  dob                DateTime?
+  about              String?
+  speciality         String[]
+  languages          String[]
+  profilePic         String?
+  profilePicPublicId String?
+
+  startTime   String   @default("09:00")
+  endTime     String   @default("21:00")
+  breakTime   String   @default("13:00")
+  workingDays String[] @default(["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"])
+
   notificationsConsultationRequests Boolean @default(true)
-  notificationsMessages            Boolean @default(true)
-  notificationsReminders           Boolean @default(true)
-  notificationsPromotions          Boolean @default(false)
-  ratePerMin  Float    @default(0)
-  isAvailable Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt // ✅ NEW
+  notificationsMessages             Boolean @default(true)
+  notificationsReminders            Boolean @default(true)
+  notificationsPromotions           Boolean @default(false)
+
+  ratePerMin  Float   @default(0)
+  isAvailable Boolean @default(true)
   fcmToken    String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   calls Call[]
 }
+
 ///////////////////////
 // CALL EVENTS
 ///////////////////////
@@ -287,7 +401,7 @@ model CallBilling {
   chargedDuration Int
   totalCost       Float
 
-  freeMinutesUsed Int   @default(0) // ✅ how many free minutes used
+  freeMinutesUsed Int   @default(0)
   walletDeducted  Float @default(0)
   planUsedMinutes Int   @default(0)
 
@@ -305,8 +419,8 @@ model CallLiveState {
   id     String @id @default(cuid())
   callId String @unique
 
-  currentCost Float @default(0)
-  elapsedSec  Int   @default(0)
+  currentCost Float    @default(0)
+  elapsedSec  Int      @default(0)
   lastSynced  DateTime @default(now())
 
   calls Call[]
@@ -331,10 +445,10 @@ model Plan {
   id          String   @id @default(cuid())
   name        String
   price       Int
-  seconds     Int      // ✅ changed from minutes
+  seconds     Int
   validDays   Int
   planType    PlanType @default(MONTHLY)
-  perDayLimit Int?     // ✅ now in seconds
+  perDayLimit Int?
   includes    String[]
   isActive    Boolean  @default(true)
   createdAt   DateTime @default(now())
@@ -343,21 +457,20 @@ model Plan {
 }
 
 model UserPlan {
-  id     String @id @default(cuid())
-  userId String
-  planId String
-
-  remainingSeconds Int              // ✅ changed from remainingMinutes
-  perDayUsedSeconds Int @default(0) // ✅ changed from perDayUsed
-  lastUsedDate     DateTime?
-
-  startDate DateTime @default(now())
-  endDate   DateTime
-  isActive  Boolean  @default(true)
+  id                String    @id @default(cuid())
+  userId            String
+  planId            String
+  remainingSeconds  Int
+  perDayUsedSeconds Int       @default(0)
+  lastUsedDate      DateTime?
+  startDate         DateTime  @default(now())
+  endDate           DateTime
+  isActive          Boolean   @default(true)
 
   user User @relation(fields: [userId], references: [id])
   plan Plan @relation(fields: [planId], references: [id])
 }
+
 ///////////////////////
 // PRODUCTS
 ///////////////////////
@@ -378,7 +491,7 @@ model Product {
 ///////////////////////
 
 model Order {
-  id          String @id @default(cuid())
+  id          String   @id @default(cuid())
   userId      String
   totalAmount Float
   status      String

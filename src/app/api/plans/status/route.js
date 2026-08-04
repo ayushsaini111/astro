@@ -3,12 +3,11 @@ import { cookies } from "next/headers";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 
-export async function GET() {
-  const cookieStore = await cookies();
-  let userId = cookieStore.get("userId")?.value;
+export async function GET(req) {
+  let userId = req.headers.get("x-user-id");
   if (!userId) {
-    const session = await getServerSession(authOptions);
-    userId = session?.user?.id;
+    const cookieStore = await cookies();
+    userId = cookieStore.get("userId")?.value;
   }
   if (!userId) return Response.json({ error: "Unauthorized" }, { status: 401 });
 
