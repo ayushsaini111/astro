@@ -6,19 +6,19 @@
   },
   "crons": [
     {
-      "path": "/api/horoscope/cron?secret=YOUR_SECRET&period=daily",
+      "path": "/api/horoscope/cron?secret=your_super_secret_cron_key_here&period=daily",
       "schedule": "0 0 * * *"
     },
     {
-      "path": "/api/horoscope/cron?secret=YOUR_SECRET&period=weekly",
+      "path": "/api/horoscope/cron?secret=your_super_secret_cron_key_here&period=weekly",
       "schedule": "3 0 * * 0"
     },
     {
-      "path": "/api/horoscope/cron?secret=YOUR_SECRET&period=monthly",
+      "path": "/api/horoscope/cron?secret=your_super_secret_cron_key_here&period=monthly",
       "schedule": "6 0 1 * *"
     },
     {
-      "path": "/api/horoscope/cron?secret=YOUR_SECRET&period=yearly",
+      "path": "/api/horoscope/cron?secret=your_super_secret_cron_key_here&period=yearly",
       "schedule": "12 0 1 1 *"
     }
   ]
