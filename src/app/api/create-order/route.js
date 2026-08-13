@@ -1,5 +1,18 @@
+// app/api/create-order/route.js
 import { NextResponse } from "next/server";
-import { getRazorpay } from "@/lib/razorpay";
+import Razorpay from "razorpay";
+
+// Initialize Razorpay
+function getRazorpay() {
+  if (!process.env.RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET) {
+    throw new Error("Razorpay credentials not found");
+  }
+
+  return new Razorpay({
+    key_id: process.env.RAZORPAY_KEY_ID,
+    key_secret: process.env.RAZORPAY_KEY_SECRET,
+  });
+}
 
 export async function POST(request) {
   try {
@@ -18,14 +31,16 @@ export async function POST(request) {
     const razorpay = getRazorpay();
 
     const options = {
-      amount: amount, // amount in paise
+      amount: Math.round(amount), // amount in paise
       currency: currency || "INR",
-      receipt: `rcpt_${Date.now()}`,
+      receipt: `rcpt_${Date.now()}_${poojaId}`,
       notes: {
         poojaId: poojaId.toString(),
         poojaTitle,
       },
     };
+
+    console.log("Creating Razorpay order:", options);
 
     const order = await razorpay.orders.create(options);
 

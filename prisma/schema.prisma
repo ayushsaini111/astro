@@ -7,9 +7,496 @@ datasource db {
   provider = "postgresql"
 }
 
-///////////////////////
-// ENUMS
-///////////////////////
+model User {
+  id                     String            @id @default(cuid())
+  username               String?           @unique
+  email                  String?           @unique
+  phone                  String?           @unique @db.VarChar(10)
+  dob                    DateTime?
+  address                String?
+  profilePic             String?
+  isVerified             Boolean           @default(false)
+  isBlocked              Boolean           @default(false)
+  createdAt              DateTime          @default(now())
+  updatedAt              DateTime          @updatedAt
+  deletedAt              DateTime?
+  freeCallMinutes        Int               @default(5)
+  freeCallPopupShown     Boolean           @default(false)
+  hasCompletedOnboarding Boolean           @default(false)
+  houseNo                String?
+  image                  String?
+  isProfileCompleted     Boolean           @default(false)
+  landmark               String?
+  name                   String?
+  pinCode                String?           @db.VarChar(6)
+  provider               AuthProvider      @default(PHONE)
+  gender                 Gender?
+  bookings               Booking[]
+  calls                  Call[]
+  devices                Device[]
+  freeCallUsage          FreeCallUsage?
+  otpRequests            OTPVerification[]
+  orders                 Order[]
+  sessions               Session[]
+  transactions           Transaction[]
+  userHoroscope          UserHoroscope?
+  plans                  UserPlan[]
+  wallet                 Wallet?
+
+  @@index([phone])
+  @@index([email])
+}
+
+model OTPVerification {
+  id         String   @id @default(cuid())
+  identifier String
+  otp        String
+  attempts   Int      @default(0)
+  expiresAt  DateTime
+  verified   Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  userId     String?
+  user       User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([identifier])
+}
+
+model Booking {
+  id                String        @id @default(cuid())
+  bookingId         String        @unique
+  userId            String
+  poojaId           Int
+  poojaTitle        String
+  poojaMode         PoojaMode
+  poojaImage        String?
+  duration          String?
+  amount            Int
+  originalPrice     Int?
+  discount          Int?
+  customerName      String
+  customerPhone     String        @db.VarChar(10)
+  customerEmail     String
+  houseNo           String?
+  address           String?
+  landmark          String?
+  pinCode           String?       @db.VarChar(6)
+  scheduledDate     String
+  timeSlot          TimeSlot
+  razorpayOrderId   String        @unique
+  razorpayPaymentId String?       @unique
+  razorpaySignature String?
+  status            BookingStatus @default(CONFIRMED)
+  paymentStatus     PaymentStatus @default(PAID)
+  specialRequests   String?
+  panditNotes       String?
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+  completedAt       DateTime?
+  cancelledAt       DateTime?
+  user              User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([bookingId])
+  @@index([scheduledDate])
+  @@index([status])
+}
+
+model FreeCallUsage {
+  id     String   @id @default(cuid())
+  userId String   @unique
+  callId String
+  usedAt DateTime @default(now())
+  user   User     @relation(fields: [userId], references: [id])
+}
+
+model Device {
+  id         String   @id @default(cuid())
+  userId     String
+  deviceId   String   @unique
+  platform   String
+  ip         String?
+  userAgent  String?
+  lastActive DateTime @default(now())
+  user       User     @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  userId    String
+  token     String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id])
+}
+
+model Wallet {
+  id           String        @id @default(cuid())
+  userId       String        @unique
+  balance      Float         @default(0)
+  updatedAt    DateTime      @updatedAt
+  transactions Transaction[]
+  user         User          @relation(fields: [userId], references: [id])
+}
+
+model Transaction {
+  id                String        @id @default(cuid())
+  userId            String
+  walletId          String?
+  amount            Float
+  type              String
+  purpose           String
+  status            PaymentStatus
+  razorpayOrderId   String?
+  razorpayPaymentId String?
+  idempotencyKey    String?       @unique
+  createdAt         DateTime      @default(now())
+  callBillings      CallBilling[]
+  user              User          @relation(fields: [userId], references: [id])
+  wallet            Wallet?       @relation(fields: [walletId], references: [id])
+}
+
+model PaymentLog {
+  id        String   @id @default(cuid())
+  event     String
+  payload   Json
+  createdAt DateTime @default(now())
+}
+
+model Call {
+  id              String         @id @default(cuid())
+  userId          String?
+  panditId        String
+  channelName     String
+  agoraToken      String?
+  type            String
+  deletedUsername String?
+  billingType     BillingType    @default(PLAN)
+  ratePerMinute   Float          @default(0)
+  isFreeCall      Boolean        @default(false)
+  freeSeconds     Int            @default(0)
+  paidSeconds     Int            @default(0)
+  status          CallStatus     @default(INITIATED)
+  startTime       DateTime?
+  endTime         DateTime?
+  duration        Int?
+  billableSeconds Int?
+  totalCost       Float?         @default(0)
+  autoEnded       Boolean        @default(false)
+  endedBy         String?
+  createdAt       DateTime       @default(now())
+  callLiveStateId String?
+  liveState       CallLiveState? @relation(fields: [callLiveStateId], references: [id])
+  pandit          Pandit         @relation(fields: [panditId], references: [id])
+  user            User?          @relation(fields: [userId], references: [id])
+  billing         CallBilling?
+  events          CallEvent[]
+}
+
+model Pandit {
+  id                                String    @id @default(cuid())
+  name                              String
+  username                          String    @unique
+  password                          String
+  email                             String?
+  phone                             String?
+  dob                               DateTime?
+  about                             String?
+  speciality                        String[]
+  languages                         String[]
+  profilePic                        String?
+  profilePicPublicId                String?
+  startTime                         String    @default("09:00")
+  endTime                           String    @default("21:00")
+  breakTime                         String    @default("13:00")
+  workingDays                       String[]  @default(["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"])
+  notificationsConsultationRequests Boolean   @default(true)
+  notificationsMessages             Boolean   @default(true)
+  notificationsReminders            Boolean   @default(true)
+  notificationsPromotions           Boolean   @default(false)
+  ratePerMin                        Float     @default(0)
+  isAvailable                       Boolean   @default(true)
+  createdAt                         DateTime  @default(now())
+  updatedAt                         DateTime  @updatedAt
+  fcmToken                          String?
+  calls                             Call[]
+}
+
+model CallEvent {
+  id        String   @id @default(cuid())
+  callId    String
+  type      String
+  metadata  Json?
+  createdAt DateTime @default(now())
+  call      Call     @relation(fields: [callId], references: [id])
+
+  @@index([callId])
+}
+
+model CallBilling {
+  id              String       @id @default(cuid())
+  callId          String       @unique
+  totalDuration   Int
+  chargedDuration Int
+  totalCost       Float
+  freeMinutesUsed Int          @default(0)
+  walletDeducted  Float        @default(0)
+  planUsedMinutes Int          @default(0)
+  transactionId   String?
+  createdAt       DateTime     @default(now())
+  call            Call         @relation(fields: [callId], references: [id])
+  transaction     Transaction? @relation(fields: [transactionId], references: [id])
+}
+
+model CallLiveState {
+  id          String   @id @default(cuid())
+  callId      String   @unique
+  currentCost Float    @default(0)
+  elapsedSec  Int      @default(0)
+  lastSynced  DateTime @default(now())
+  calls       Call[]
+}
+
+model CallAlert {
+  id        String   @id @default(cuid())
+  callId    String
+  type      String
+  createdAt DateTime @default(now())
+}
+
+model Plan {
+  id          String     @id @default(cuid())
+  name        String
+  price       Int
+  seconds     Int
+  validDays   Int
+  planType    PlanType   @default(MONTHLY)
+  perDayLimit Int?
+  includes    String[]
+  isActive    Boolean    @default(true)
+  createdAt   DateTime   @default(now())
+  userPlans   UserPlan[]
+}
+
+model UserPlan {
+  id                String    @id @default(cuid())
+  userId            String
+  planId            String
+  remainingSeconds  Int
+  perDayUsedSeconds Int       @default(0)
+  lastUsedDate      DateTime?
+  startDate         DateTime  @default(now())
+  endDate           DateTime
+  isActive          Boolean   @default(true)
+  plan              Plan      @relation(fields: [planId], references: [id])
+  user              User      @relation(fields: [userId], references: [id])
+}
+
+model Product {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  price       Float
+  stock       Int
+  images      String[]
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+}
+
+model Order {
+  id          String      @id @default(cuid())
+  userId      String
+  totalAmount Float
+  status      String
+  address     String
+  paymentId   String?
+  createdAt   DateTime    @default(now())
+  user        User        @relation(fields: [userId], references: [id])
+  items       OrderItem[]
+}
+
+model OrderItem {
+  id        String @id @default(cuid())
+  orderId   String
+  productId String
+  quantity  Int
+  price     Float
+  order     Order  @relation(fields: [orderId], references: [id])
+}
+
+model DeliveryPartner {
+  id          String     @id @default(cuid())
+  name        String
+  phone       String
+  vehicleType String
+  isAvailable Boolean    @default(true)
+  deliveries  Delivery[]
+}
+
+model Delivery {
+  id          String          @id @default(cuid())
+  orderId     String
+  partnerId   String
+  status      String
+  assignedAt  DateTime        @default(now())
+  deliveredAt DateTime?
+  partner     DeliveryPartner @relation(fields: [partnerId], references: [id])
+}
+
+model FeatureFlag {
+  id      String  @id @default(cuid())
+  key     String  @unique
+  enabled Boolean @default(false)
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  action    String
+  metadata  Json?
+  createdAt DateTime @default(now())
+}
+
+model DailyHoroscope {
+  id        String   @id @default(cuid())
+  date      DateTime @unique
+  content   Json
+  source    String   @default("CALCULATED")
+  accuracy  Float    @default(0.8)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([date])
+}
+
+model HoroscopeSource {
+  id          String    @id @default(cuid())
+  name        String    @unique
+  url         String?
+  apiKey      String?
+  sourceType  String
+  isActive    Boolean   @default(true)
+  lastFetched DateTime?
+  reliability Float     @default(0.7)
+  createdAt   DateTime  @default(now())
+}
+
+model PlanetaryTransit {
+  id           String   @id @default(cuid())
+  date         DateTime
+  planetName   String
+  longitude    Float
+  sign         String
+  degree       Float
+  speed        Float
+  isRetrograde Boolean  @default(false)
+  createdAt    DateTime @default(now())
+
+  @@unique([date, planetName])
+  @@index([date, planetName])
+}
+
+model HoroscopeCache {
+  id          String   @id @default(cuid())
+  rashi       String
+  period      String
+  dateKey     String
+  data        Json
+  generatedAt DateTime @default(now())
+  expiresAt   DateTime
+
+  @@unique([rashi, period, dateKey])
+  @@index([period, dateKey])
+  @@index([expiresAt])
+}
+
+model HoroscopeGenerationLog {
+  id          String   @id @default(cuid())
+  period      String
+  dateKey     String
+  totalRashis Int
+  apiCalls    Int
+  status      String   @default("SUCCESS")
+  completedAt DateTime @default(now())
+
+  @@unique([period, dateKey])
+  @@index([period, completedAt])
+}
+
+model UserHoroscope {
+  id          String   @id @default(cuid())
+  userId      String   @unique
+  birthDate   DateTime
+  birthTime   String?
+  birthPlace  String?
+  latitude    Float?
+  longitude   Float?
+  sunSign     String
+  moonSign    String?
+  ascendant   String?
+  lastUpdated DateTime @default(now())
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model PanchangFestival {
+  id                  Int       @id @default(autoincrement())
+  year                Int       @default(2026)
+  month               String    @db.VarChar(20)
+  festivalName        String    @map("festival_name") @db.VarChar(100)
+  startDate           DateTime  @map("start_date") @db.Date
+  endDate             DateTime? @map("end_date") @db.Date
+  muhurat             String    @db.VarChar(255)
+  importantDetails    String    @map("important_details")
+  laabhOfPooja        String    @map("laabh_of_pooja")
+  filter              String    @db.VarChar(100)
+  recommendedPujaType String    @map("recommended_puja_type") @db.VarChar(255)
+  createdAt           DateTime? @default(now()) @map("created_at") @db.Timestamp(6)
+
+  @@map("panchang_festivals")
+}
+
+model SystemState {
+  id        String   @id
+  key       String   @unique
+  value     Json
+  updatedAt DateTime
+  createdAt DateTime @default(now())
+}
+
+model pooja_languages {
+  id       Int     @id @default(autoincrement())
+  pooja_id Int?
+  language String  @db.VarChar(50)
+  poojas   poojas? @relation(fields: [pooja_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([pooja_id], map: "idx_pooja_languages_pooja_id")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model poojas {
+  id                Int               @id @default(autoincrement())
+  title             String            @db.VarChar(255)
+  short_description String?
+  description       String?
+  price             Decimal           @db.Decimal(10, 2)
+  offer_price       Decimal           @db.Decimal(10, 2)
+  duration          String?           @db.VarChar(100)
+  mode              String            @db.VarChar(50)
+  image             String?           @db.VarChar(500)
+  rating            Decimal?          @default(0) @db.Decimal(3, 2)
+  bookings          String?           @default("0") @db.VarChar(50)
+  popular           Boolean?          @default(false)
+  category          String            @db.VarChar(20)
+  created_at        DateTime?         @default(now()) @db.Timestamp(6)
+  updated_at        DateTime?         @default(now()) @db.Timestamp(6)
+  filter            String?           @db.VarChar(100)
+  pooja_languages   pooja_languages[]
+
+  @@index([category], map: "idx_poojas_category")
+  @@index([popular], map: "idx_poojas_popular")
+}
 
 enum CallStatus {
   INITIATED
@@ -54,10 +541,10 @@ enum BookingStatus {
 
 enum PaymentStatus {
   PENDING
-  PAID
-  FAILED
-  REFUNDED
   SUCCESS
+  FAILED
+  PAID
+  REFUNDED
 }
 
 enum AuthProvider {
@@ -69,493 +556,4 @@ enum Gender {
   MALE
   FEMALE
   OTHER
-}
-
-///////////////////////
-// USER (merged)
-///////////////////////
-
-model User {
-  id       String  @id @default(cuid())
-
-  // Auth
-  phone    String?  @unique @db.VarChar(10)
-  email    String?  @unique
-  provider AuthProvider @default(PHONE)
-
-  // Profile
-  name       String?
-  username   String?  @unique
-  image      String?
-  profilePic String?
-  dob        DateTime?
-  gender     Gender?
-
-  // Address
-  houseNo   String?
-  address   String?
-  landmark  String?
-  pinCode   String?  @db.VarChar(6)
-
-  // Status
-  isVerified             Boolean @default(false)
-  isBlocked              Boolean @default(false)
-  isProfileCompleted     Boolean @default(false)
-  hasCompletedOnboarding Boolean @default(false)
-
-  // Welcome Offer
-  freeCallPopupShown Boolean @default(false)
-  freeCallMinutes    Int     @default(5)
-
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
-  deletedAt DateTime?
-
-  // Relations
-  wallet        Wallet?
-  sessions      Session[]
-  devices       Device[]
-  otpRequests   OTPVerification[]
-  transactions  Transaction[]
-  calls         Call[]
-   orders        Order[] 
-  plans         UserPlan[]
-  freeCallUsage FreeCallUsage?
-  bookings      Booking[]
-
-  @@index([phone])
-  @@index([email])
-}
-
-///////////////////////
-// OTP
-///////////////////////
-
-model OTPVerification {
-  id         String   @id @default(cuid())
-  identifier String
-  otp        String
-  attempts   Int      @default(0)
-  verified   Boolean  @default(false)
-  expiresAt  DateTime
-  createdAt  DateTime @default(now())
-  userId     String?
-
-  user User? @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([identifier])
-}
-
-///////////////////////
-// BOOKING
-///////////////////////
-
-model Booking {
-  id        String @id @default(cuid())
-  bookingId String @unique
-  userId    String
-  user      User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  poojaId    Int
-  poojaTitle String
-  poojaMode  PoojaMode
-  poojaImage String?
-  duration   String?
-
-  amount        Int
-  originalPrice Int?
-  discount      Int?
-
-  customerName  String
-  customerPhone String @db.VarChar(10)
-  customerEmail String
-
-  houseNo  String?
-  address  String?
-  landmark String?
-  pinCode  String? @db.VarChar(6)
-
-  scheduledDate String
-  timeSlot      TimeSlot
-
-  razorpayOrderId   String  @unique
-  razorpayPaymentId String? @unique
-  razorpaySignature String?
-
-  status        BookingStatus @default(CONFIRMED)
-  paymentStatus PaymentStatus @default(PAID)
-
-  specialRequests String?
-  panditNotes     String?
-
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-  completedAt DateTime?
-  cancelledAt DateTime?
-
-  @@index([userId])
-  @@index([bookingId])
-  @@index([scheduledDate])
-  @@index([status])
-}
-
-///////////////////////
-// FREE CALL USAGE
-///////////////////////
-
-model FreeCallUsage {
-  id     String   @id @default(cuid())
-  userId String   @unique
-  callId String
-  usedAt DateTime @default(now())
-
-  user User @relation(fields: [userId], references: [id])
-}
-
-///////////////////////
-// DEVICE
-///////////////////////
-
-model Device {
-  id         String   @id @default(cuid())
-  userId     String
-  deviceId   String   @unique
-  platform   String
-  ip         String?
-  userAgent  String?
-  lastActive DateTime @default(now())
-
-  user User @relation(fields: [userId], references: [id])
-
-  @@index([userId])
-}
-
-///////////////////////
-// SESSION
-///////////////////////
-
-model Session {
-  id        String   @id @default(cuid())
-  userId    String
-  token     String   @unique
-  expiresAt DateTime
-  createdAt DateTime @default(now())
-
-  user User @relation(fields: [userId], references: [id])
-}
-
-///////////////////////
-// WALLET
-///////////////////////
-
-model Wallet {
-  id        String   @id @default(cuid())
-  userId    String   @unique
-  balance   Float    @default(0)
-  updatedAt DateTime @updatedAt
-
-  user         User          @relation(fields: [userId], references: [id])
-  transactions Transaction[]
-}
-
-///////////////////////
-// TRANSACTION
-///////////////////////
-
-model Transaction {
-  id       String  @id @default(cuid())
-  userId   String
-  walletId String?
-
-  amount  Float
-  type    String
-  purpose String
-
-  status PaymentStatus
-
-  razorpayOrderId   String?
-  razorpayPaymentId String?
-  idempotencyKey    String? @unique
-
-  createdAt DateTime @default(now())
-
-  user         User          @relation(fields: [userId], references: [id])
-  wallet       Wallet?       @relation(fields: [walletId], references: [id])
-  callBillings CallBilling[]
-}
-
-///////////////////////
-// PAYMENT LOG
-///////////////////////
-
-model PaymentLog {
-  id        String   @id @default(cuid())
-  event     String
-  payload   Json
-  createdAt DateTime @default(now())
-}
-
-///////////////////////
-// CALL SYSTEM
-///////////////////////
-
-model Call {
-  id      String  @id @default(cuid())
-  userId  String?
-  user    User?   @relation(fields: [userId], references: [id])
-  panditId String
-  pandit   Pandit @relation(fields: [panditId], references: [id])
-
-  channelName     String
-  agoraToken      String?
-  type            String
-  deletedUsername String?
-
-  billingType   BillingType @default(PLAN)
-  ratePerMinute Float       @default(0)
-  isFreeCall    Boolean     @default(false)
-  freeSeconds   Int         @default(0)
-  paidSeconds   Int         @default(0)
-
-  status    CallStatus @default(INITIATED)
-  startTime DateTime?
-  endTime   DateTime?
-
-  duration        Int?
-  billableSeconds Int?
-  totalCost       Float? @default(0)
-
-  autoEnded Boolean @default(false)
-  endedBy   String?
-
-  createdAt       DateTime       @default(now())
-  events          CallEvent[]
-  billing         CallBilling?
-  liveState       CallLiveState? @relation(fields: [callLiveStateId], references: [id])
-  callLiveStateId String?
-}
-
-///////////////////////
-// PANDIT
-///////////////////////
-
-model Pandit {
-  id                 String    @id @default(cuid())
-  name               String
-  username           String    @unique
-  password           String
-  email              String?
-  phone              String?
-  dob                DateTime?
-  about              String?
-  speciality         String[]
-  languages          String[]
-  profilePic         String?
-  profilePicPublicId String?
-
-  startTime   String   @default("09:00")
-  endTime     String   @default("21:00")
-  breakTime   String   @default("13:00")
-  workingDays String[] @default(["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"])
-
-  notificationsConsultationRequests Boolean @default(true)
-  notificationsMessages             Boolean @default(true)
-  notificationsReminders            Boolean @default(true)
-  notificationsPromotions           Boolean @default(false)
-
-  ratePerMin  Float   @default(0)
-  isAvailable Boolean @default(true)
-  fcmToken    String?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  calls Call[]
-}
-
-///////////////////////
-// CALL EVENTS
-///////////////////////
-
-model CallEvent {
-  id        String   @id @default(cuid())
-  callId    String
-  call      Call     @relation(fields: [callId], references: [id])
-  type      String
-  metadata  Json?
-  createdAt DateTime @default(now())
-
-  @@index([callId])
-}
-
-///////////////////////
-// CALL BILLING
-///////////////////////
-
-model CallBilling {
-  id     String @id @default(cuid())
-  callId String @unique
-  call   Call   @relation(fields: [callId], references: [id])
-
-  totalDuration   Int
-  chargedDuration Int
-  totalCost       Float
-
-  freeMinutesUsed Int   @default(0)
-  walletDeducted  Float @default(0)
-  planUsedMinutes Int   @default(0)
-
-  transactionId String?
-  transaction   Transaction? @relation(fields: [transactionId], references: [id])
-
-  createdAt DateTime @default(now())
-}
-
-///////////////////////
-// LIVE STATE
-///////////////////////
-
-model CallLiveState {
-  id     String @id @default(cuid())
-  callId String @unique
-
-  currentCost Float    @default(0)
-  elapsedSec  Int      @default(0)
-  lastSynced  DateTime @default(now())
-
-  calls Call[]
-}
-
-///////////////////////
-// ALERTS
-///////////////////////
-
-model CallAlert {
-  id        String   @id @default(cuid())
-  callId    String
-  type      String
-  createdAt DateTime @default(now())
-}
-
-///////////////////////
-// PLANS
-///////////////////////
-
-model Plan {
-  id          String   @id @default(cuid())
-  name        String
-  price       Int
-  seconds     Int
-  validDays   Int
-  planType    PlanType @default(MONTHLY)
-  perDayLimit Int?
-  includes    String[]
-  isActive    Boolean  @default(true)
-  createdAt   DateTime @default(now())
-
-  userPlans UserPlan[]
-}
-
-model UserPlan {
-  id                String    @id @default(cuid())
-  userId            String
-  planId            String
-  remainingSeconds  Int
-  perDayUsedSeconds Int       @default(0)
-  lastUsedDate      DateTime?
-  startDate         DateTime  @default(now())
-  endDate           DateTime
-  isActive          Boolean   @default(true)
-
-  user User @relation(fields: [userId], references: [id])
-  plan Plan @relation(fields: [planId], references: [id])
-}
-
-///////////////////////
-// PRODUCTS
-///////////////////////
-
-model Product {
-  id          String   @id @default(cuid())
-  name        String
-  description String?
-  price       Float
-  stock       Int
-  images      String[]
-  isActive    Boolean  @default(true)
-  createdAt   DateTime @default(now())
-}
-
-///////////////////////
-// ORDERS
-///////////////////////
-
-model Order {
-  id          String   @id @default(cuid())
-  userId      String
-  totalAmount Float
-  status      String
-  address     String
-  paymentId   String?
-  createdAt   DateTime @default(now())
-
-  user  User        @relation(fields: [userId], references: [id])
-  items OrderItem[]
-}
-
-model OrderItem {
-  id        String @id @default(cuid())
-  orderId   String
-  productId String
-  quantity  Int
-  price     Float
-
-  order Order @relation(fields: [orderId], references: [id])
-}
-
-///////////////////////
-// DELIVERY
-///////////////////////
-
-model DeliveryPartner {
-  id          String   @id @default(cuid())
-  name        String
-  phone       String
-  vehicleType String
-  isAvailable Boolean  @default(true)
-
-  deliveries Delivery[]
-}
-
-model Delivery {
-  id          String    @id @default(cuid())
-  orderId     String
-  partnerId   String
-  status      String
-  assignedAt  DateTime  @default(now())
-  deliveredAt DateTime?
-
-  partner DeliveryPartner @relation(fields: [partnerId], references: [id])
-}
-
-///////////////////////
-// FEATURE FLAGS
-///////////////////////
-
-model FeatureFlag {
-  id      String  @id @default(cuid())
-  key     String  @unique
-  enabled Boolean @default(false)
-}
-
-///////////////////////
-// AUDIT LOG
-///////////////////////
-
-model AuditLog {
-  id        String   @id @default(cuid())
-  userId    String?
-  action    String
-  metadata  Json?
-  createdAt DateTime @default(now())
 }

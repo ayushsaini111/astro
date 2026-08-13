@@ -1,0 +1,25 @@
+{
+  "functions": {
+    "src/app/api/horoscope/cron/route.js": {
+      "maxDuration": 180
+    }
+  },
+  "crons": [
+    {
+      "path": "/api/horoscope/cron?secret=YOUR_SECRET&period=daily",
+      "schedule": "0 0 * * *"
+    },
+    {
+      "path": "/api/horoscope/cron?secret=YOUR_SECRET&period=weekly",
+      "schedule": "3 0 * * 0"
+    },
+    {
+      "path": "/api/horoscope/cron?secret=YOUR_SECRET&period=monthly",
+      "schedule": "6 0 1 * *"
+    },
+    {
+      "path": "/api/horoscope/cron?secret=YOUR_SECRET&period=yearly",
+      "schedule": "12 0 1 1 *"
+    }
+  ]
+}
