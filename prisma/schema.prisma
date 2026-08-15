@@ -303,17 +303,58 @@ model Product {
   isActive    Boolean  @default(true)
   createdAt   DateTime @default(now())
 }
-
 model Order {
-  id          String      @id @default(cuid())
-  userId      String
-  totalAmount Float
-  status      String
-  address     String
-  paymentId   String?
-  createdAt   DateTime    @default(now())
-  user        User        @relation(fields: [userId], references: [id])
-  items       OrderItem[]
+  id                String         @id @default(cuid())
+  userId            String
+  orderId           String         @unique @default(cuid())
+  totalAmount       Float
+  status            OrderStatus    @default(PENDING)
+
+  // Delivery Address
+  houseNo           String?
+  address           String?
+  landmark          String?
+  pinCode           String?        @db.VarChar(6)
+  latitude          Float?
+  longitude         Float?
+  addressType       String?
+  fullAddress       String         @default("")
+
+  // Customer Details
+  customerName      String         @default("")
+  customerPhone     String         @default("") @db.VarChar(10)
+  customerEmail     String         @default("")
+
+  // Product Details
+  productId         String?
+  productTitle      String?
+  productImage      String?
+  quantity          Int?
+  unitPrice         Float?
+
+  // Payment Details
+  razorpayOrderId   String?        @unique
+  razorpayPaymentId String?        @unique
+  razorpaySignature String?
+  paymentStatus     PaymentStatus  @default(PENDING)
+
+  // Additional
+  specialRequests   String?
+  deliveryStatus    DeliveryStatus @default(PENDING)
+  estimatedDelivery DateTime?
+  deliveredAt       DateTime?
+  cancelledAt       DateTime?
+
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+
+  user              User           @relation(fields: [userId], references: [id])
+  items             OrderItem[]
+
+  @@index([userId])
+  @@index([orderId])
+  @@index([status])
+  @@index([createdAt])
 }
 
 model OrderItem {
@@ -323,6 +364,29 @@ model OrderItem {
   quantity  Int
   price     Float
   order     Order  @relation(fields: [orderId], references: [id])
+
+  @@index([orderId])
+}
+
+enum OrderStatus {
+  PENDING
+  CONFIRMED
+  PROCESSING
+  SHIPPED
+  DELIVERED
+  CANCELLED
+  REFUNDED
+}
+
+enum DeliveryStatus {
+  PENDING
+  CONFIRMED
+  PICKED_UP
+  IN_TRANSIT
+  OUT_FOR_DELIVERY
+  DELIVERED
+  FAILED
+  RETURNED
 }
 
 model DeliveryPartner {
