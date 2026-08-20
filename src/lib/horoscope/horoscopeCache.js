@@ -5,8 +5,13 @@ export function normalizeDateKey(date, period) {
   const d = date instanceof Date ? date : new Date(date);
 
   switch (period) {
-    case 'daily':
-      return d.toISOString().split('T')[0];
+case 'daily':
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Kolkata',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(d);
 
     case 'weekly': {
       const tmp = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
@@ -23,8 +28,13 @@ export function normalizeDateKey(date, period) {
     case 'yearly':
       return `${d.getUTCFullYear()}`;
 
-    default:
-      return d.toISOString().split('T')[0];
+   default:
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Kolkata',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(d);
   }
 }
 

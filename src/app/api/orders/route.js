@@ -29,10 +29,10 @@ const normalizeBooking = (b) => ({
   paymentId: b.razorpayPaymentId,
   createdAt: b.createdAt,
   meta: {
-    mode: b.poojaMode,
+    mode: b.poojaType,
     duration: b.duration,
     scheduledDate: b.scheduledDate,
-    timeSlot: b.timeSlot,
+    scheduledTime: b.scheduledTime,
     customerName: b.customerName,
     customerPhone: b.customerPhone,
     customerEmail: b.customerEmail,
@@ -95,12 +95,11 @@ const normalizePlan = (up) => ({
 });
 
 // ─── Query Selections ────────────────────────────────────────────────────────
-
 const BOOKING_SELECT = {
   id: true,
   bookingId: true,
   poojaTitle: true,
-  poojaMode: true,
+  poojaType: true,
   poojaImage: true,
   duration: true,
   amount: true,
@@ -110,7 +109,7 @@ const BOOKING_SELECT = {
   customerPhone: true,
   customerEmail: true,
   scheduledDate: true,
-  timeSlot: true,
+  scheduledTime: true,
   status: true,
   paymentStatus: true,
   houseNo: true,
@@ -120,7 +119,6 @@ const BOOKING_SELECT = {
   razorpayPaymentId: true,
   createdAt: true,
 };
-
 const ORDER_SELECT = {
   id: true,
   orderId: true,

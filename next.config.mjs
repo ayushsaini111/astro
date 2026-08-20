@@ -9,6 +9,7 @@ const nextConfig = {
   serverExternalPackages: [
     "@fusionstrings/swisseph-wasi",
     "better-sqlite3",
+    "node-cron",  // ✅ ADD THIS
   ],
 
   images: {
@@ -41,12 +42,13 @@ const nextConfig = {
         ? [config.externals]
         : [];
 
-      config.externals = [...externals, 'better-sqlite3'];
+      config.externals = [...externals, 'better-sqlite3', 'node-cron'];  // ✅ ADD node-cron HERE
     } else {
       // Prevent client bundle from trying to resolve Node-only modules
       config.resolve.fallback = {
         ...config.resolve.fallback,
         'better-sqlite3': false,
+        'node-cron': false,  // ✅ ADD THIS
         fs: false,
         path: false,
         crypto: false,

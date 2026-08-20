@@ -1,3 +1,4 @@
+// src/app/backend/create-product-order/route.js
 import { NextResponse } from "next/server";
 import Razorpay from "razorpay";
 
@@ -38,18 +39,20 @@ export async function POST(request) {
     }
 
     const order = await razorpay.orders.create({
-      amount: parseInt(amount),
+      amount: parseInt(amount), // amount in paise
       currency: currency || "INR",
       receipt: `PROD_${Date.now()}_${productId}`,
       notes: {
         productId: productId.toString(),
         productTitle,
-        productImage,
-        quantity: quantity || 1,
-        unitPrice,
+        productImage: productImage || "",
+        quantity: (quantity || 1).toString(),
+        unitPrice: (unitPrice || 0).toString(),
         userId: user.id,
       },
     });
+
+    console.log("✅ Razorpay order created:", order.id);
 
     return NextResponse.json({
       success: true,
@@ -60,7 +63,7 @@ export async function POST(request) {
       },
     });
   } catch (error) {
-    console.error("Create product order error:", error);
+    console.error("❌ Create product order error:", error);
     return NextResponse.json(
       { success: false, error: error.message },
       { status: 500 }

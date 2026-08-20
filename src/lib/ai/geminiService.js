@@ -267,7 +267,13 @@ function parseAndSanitize(text, rashi) {
 }
 
 export function toDateKey(date) {
-  return (date instanceof Date ? date : new Date(date)).toISOString().split('T')[0];
-}
+  const d = date instanceof Date ? date : new Date(date);
 
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Kolkata',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(d);
+}
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
