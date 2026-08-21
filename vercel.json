@@ -23,7 +23,11 @@
     },
      {
       "path": "/api/admins/reminders/process",
-      "schedule": "*/5 * * * *"
+      "schedule": "30 1 * * *"
+    },
+    {
+      "path": "/api/admins/reminders/process",
+      "schedule": "30 2 * * *"
     }
   ]
   
