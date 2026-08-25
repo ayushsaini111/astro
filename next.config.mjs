@@ -30,27 +30,6 @@ const nextConfig = {
       },
     ];
   },
-
-  webpack: (config, { isServer }) => {
-    if (isServer) {
-      const externals = Array.isArray(config.externals)
-        ? config.externals
-        : config.externals
-        ? [config.externals]
-        : [];
-      config.externals = [...externals, "better-sqlite3", "node-cron"];
-    } else {
-      config.resolve.fallback = {
-        ...config.resolve.fallback,
-        "better-sqlite3": false,
-        "node-cron": false,
-        fs: false,
-        path: false,
-        crypto: false,
-      };
-    }
-    return config;
-  },
 };
 
 export default nextConfig;
