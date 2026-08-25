@@ -1,16 +1,15 @@
 const nextConfig = {
   reactStrictMode: false,
 
-  outputFileTracingIncludes: {
-    "/api/kundali/generate": [
-      "./node_modules/@fusionstrings/swisseph-wasi/esm/generated/**",
-    ],
+  turbopack: {
+    root: "D:\\OryviaProjects\\astro",
   },
 
+  // Merge both external packages
   serverExternalPackages: [
     "@fusionstrings/swisseph-wasi",
     "better-sqlite3",
-    "node-cron",
+    "node-cron",  // ✅ ADD THIS
   ],
 
   images: {
@@ -26,6 +25,7 @@ const nextConfig = {
         source: "/api/:path*",
         headers: [
           { key: "Access-Control-Allow-Credentials", value: "true" },
+          { key: "Access-Control-Allow-Origin", value: "http://localhost:3000" },
           { key: "Access-Control-Allow-Origin", value: "https://receptionrantraa.vercel.app" },
           { key: "Access-Control-Allow-Methods", value: "GET,DELETE,PATCH,POST,PUT,OPTIONS" },
           { key: "Access-Control-Allow-Headers", value: "Content-Type, Authorization, X-Requested-With" },
@@ -36,22 +36,26 @@ const nextConfig = {
 
   webpack: (config, { isServer }) => {
     if (isServer) {
+      // Keep better-sqlite3 as external on server — don't bundle native addon
       const externals = Array.isArray(config.externals)
         ? config.externals
         : config.externals
         ? [config.externals]
         : [];
-      config.externals = [...externals, 'better-sqlite3', 'node-cron'];
+
+      config.externals = [...externals, 'better-sqlite3', 'node-cron'];  // ✅ ADD node-cron HERE
     } else {
+      // Prevent client bundle from trying to resolve Node-only modules
       config.resolve.fallback = {
         ...config.resolve.fallback,
         'better-sqlite3': false,
-        'node-cron': false,
+        'node-cron': false,  // ✅ ADD THIS
         fs: false,
         path: false,
         crypto: false,
       };
     }
+
     return config;
   },
 };
