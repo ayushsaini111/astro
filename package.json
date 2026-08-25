@@ -2,12 +2,12 @@
   "name": "astro",
   "version": "0.1.0",
   "private": true,
-  "scripts": {
-    "dev": "next dev --webpack",
-    "build": "prisma generate && next build",
-    "start": "next start",
-    "lint": "eslint"
-  },
+"scripts": {
+  "dev": "next dev",
+  "build": "next build",
+  "postbuild": "node -e \"const fs=require('fs'),path=require('path'); const src='node_modules/@fusionstrings/swisseph-wasi/esm/generated/libswephe.wasm'; const dest='.next/server/vendor-chunks/libswephe.wasm'; if(fs.existsSync(src)){ fs.mkdirSync(path.dirname(dest),{recursive:true}); fs.copyFileSync(src,dest); }\"",
+  "start": "next start"
+},
   "dependencies": {
     "@fusionstrings/swisseph-wasi": "^0.1.0",
     "@google/genai": "^2.16.0",

@@ -4,18 +4,18 @@ import geoTz from "geo-tz";
 import { load, Constants } from "@fusionstrings/swisseph-wasi";
 import path from "path";
 import fs from "fs";
+import { createRequire } from "module";
 
-// Force Vercel's NFT bundler to trace and bundle libswephe.wasm into /var/task/
+// Force Vercel's NFT bundler to bundle libswephe.wasm into /var/task/
+const require = createRequire(import.meta.url);
 try {
-  const wasmPath = path.join(
-    process.cwd(),
-    "node_modules/@fusionstrings/swisseph-wasi/esm/generated/libswephe.wasm"
-  );
+  const pkgPath = require.resolve("@fusionstrings/swisseph-wasi/package.json");
+  const wasmPath = path.join(path.dirname(pkgPath), "esm/generated/libswephe.wasm");
   if (fs.existsSync(wasmPath)) {
-    // Evaluated statically by @vercel/nft tracer during build
+    fs.readFileSync(wasmPath); // Statically detected by @vercel/nft tracer
   }
 } catch (e) {
-  // Silent catch for build-time safety
+  // Silent fallback for build time
 }
 
 let ephPromise = null;
