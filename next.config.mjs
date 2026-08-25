@@ -1,10 +1,10 @@
 const nextConfig = {
   reactStrictMode: false,
 
-  // Only set turbopack.root when running locally on Windows — never on Vercel
-  ...(process.env.VERCEL
+  // Absolute local path only for Windows dev; empty object on Vercel
+  turbopack: process.env.VERCEL
     ? {}
-    : { turbopack: { root: "D:\\OryviaProjects\\astro" } }),
+    : { root: "D:\\OryviaProjects\\astro" },
 
   outputFileTracingIncludes: {
     "/api/kundali/generate": [
