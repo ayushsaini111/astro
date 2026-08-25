@@ -2,12 +2,6 @@
 const nextConfig = {
   reactStrictMode: false,
 
-  outputFileTracingIncludes: {
-    '/api/kundali/generate': ['./node_modules/@fusionstrings/swisseph-wasi/**/*'],
-    'src/app/api/kundali/generate/route': ['./node_modules/@fusionstrings/swisseph-wasi/**/*'],
-    'app/api/kundali/generate/route': ['./node_modules/@fusionstrings/swisseph-wasi/**/*'],
-  },
-
   turbopack: {
     root: "D:\\OryviaProjects\\astro",
   },
