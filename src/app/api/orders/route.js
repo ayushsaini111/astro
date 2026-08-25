@@ -12,6 +12,15 @@ function getUserFromHeaders(request) {
     name: request.headers.get('x-user-name') || '',
   };
 }
+function isPlanCurrentlyValid(up) {
+  if (!up.isActive) return false;
+  if (up.remainingSeconds <= 0) return false;
+
+  const endOfExpiryDay = new Date(up.endDate);
+  endOfExpiryDay.setHours(23, 59, 59, 999); // valid until end of expiry day
+
+  return endOfExpiryDay.getTime() >= Date.now();
+}
 
 // ─── Normalizers ─────────────────────────────────────────────────────────────
 
@@ -69,30 +78,34 @@ const normalizeOrder = (o) => ({
   },
 });
 
-const normalizePlan = (up) => ({
-  id: up.id,
-  orderId: `PLAN_${up.id.slice(-8).toUpperCase()}`,
-  type: "TALKTIME",
-  title: up.plan.name,
-  image: null,
-  amount: up.plan.price / 100,
-  originalPrice: null,
-  discount: null,
-  status: up.isActive ? "ACTIVE" : "EXPIRED",
-  paymentStatus: "SUCCESS",
-  paymentId: null,
-  createdAt: up.startDate,
-  meta: {
-    seconds: up.plan.seconds,
-    remainingSeconds: up.remainingSeconds,
-    validDays: up.plan.validDays,
-    endDate: up.endDate,
-    perDayLimit: up.plan.perDayLimit,
-    planType: up.plan.planType,
-    isActive: up.isActive,
-    perDayUsedSeconds: up.perDayUsedSeconds,
-  },
-});
+const normalizePlan = (up) => {
+  const isValid = isPlanCurrentlyValid(up); // ✅ computed live, not from stale DB flag
+
+  return {
+    id: up.id,
+    orderId: `PLAN_${up.id.slice(-8).toUpperCase()}`,
+    type: "TALKTIME",
+    title: up.plan.name,
+    image: null,
+    amount: up.plan.price / 100,
+    originalPrice: null,
+    discount: null,
+    status: isValid ? "ACTIVE" : "EXPIRED", // ✅ fixed
+    paymentStatus: "SUCCESS",
+    paymentId: null,
+    createdAt: up.startDate,
+    meta: {
+      seconds: up.plan.seconds,
+      remainingSeconds: up.remainingSeconds,
+      validDays: up.plan.validDays,
+      endDate: up.endDate,
+      perDayLimit: up.plan.perDayLimit,
+      planType: up.plan.planType,
+      isActive: isValid, // ✅ fixed — used by PlanCard progress bar logic
+      perDayUsedSeconds: up.perDayUsedSeconds,
+    },
+  };
+};
 
 // ─── Query Selections ────────────────────────────────────────────────────────
 const BOOKING_SELECT = {

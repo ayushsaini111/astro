@@ -7,23 +7,17 @@ export const ALL_RASHIS = [
   'Sagittarius', 'Capricorn', 'Aquarius', 'Pisces',
 ];
 
-export const ALL_PERIODS = ['daily', 'weekly', 'monthly', 'yearly']; // ✅ Added yearly
+export const ALL_PERIODS = ['daily', 'weekly', 'monthly', 'yearly'];
 
-// Each period uses its own dedicated API key (separate Google projects = separate quotas)
-// Key 1 → daily   (20 RPD)
-// Key 2 → weekly  (20 RPD)
-// Key 3 → monthly (20 RPD)
-// Key 4 → yearly  (20 RPD) ✅ Changed from ondemand
 const PERIOD_KEYS = {
   daily:   process.env.GEMINI_API_KEY_1 || process.env.GEMINI_API_KEY,
   weekly:  process.env.GEMINI_API_KEY_2 || process.env.GEMINI_API_KEY,
   monthly: process.env.GEMINI_API_KEY_3 || process.env.GEMINI_API_KEY,
-  yearly:  process.env.GEMINI_API_KEY_4 || process.env.GEMINI_API_KEY, // ✅ Changed
+  yearly:  process.env.GEMINI_API_KEY_4 || process.env.GEMINI_API_KEY,
 };
 
 const MODEL_FALLBACK = ['gemini-3.6-flash', 'gemini-2.5-flash', 'gemini-2.0-flash'];
 
-// Free tier: 5 RPM → 5.5s between calls stays safely under
 const DELAY_BETWEEN_CALLS_MS = 5500;
 
 export class QuotaError extends Error {
@@ -31,8 +25,7 @@ export class QuotaError extends Error {
 }
 
 export class GeminiHoroscopeService {
-  constructor(period = 'daily') { // ✅ Changed default from 'ondemand' to 'daily'
-    // Pick the right API key for this period
+  constructor(period = 'daily') {
     const apiKey = PERIOD_KEYS[period] || process.env.GEMINI_API_KEY;
     if (!apiKey) throw new Error(`No API key found for period "${period}". Set GEMINI_API_KEY_1 to _4 in .env.local`);
 
@@ -120,8 +113,10 @@ export class GeminiHoroscopeService {
     return parseAndSanitize(text, rashi);
   }
 
-  // Batch — used by cron only, sequential with 5.5s between each call
-  async generateBatch(date, period, rashis = ALL_RASHIS) {
+  // Batch — used by cron only, sequential with throttle between each call
+  // onEach(rashi, data) fires immediately after each rashi succeeds, so callers
+  // can save it to the DB right away instead of waiting for the whole batch to finish
+  async generateBatch(date, period, rashis = ALL_RASHIS, onEach = null) {
     console.log(`[Gemini:${this.period}] Batch ${period} × ${rashis.length} rashis — ~${Math.ceil(rashis.length * DELAY_BETWEEN_CALLS_MS / 1000)}s`);
 
     const horoscopes = {};
@@ -138,8 +133,17 @@ export class GeminiHoroscopeService {
       try {
         const text = await this._call(buildPrompt(rashi, date, period));
         apiCalls++;
-        horoscopes[rashi.toLowerCase()] = parseAndSanitize(text, rashi);
+        const data = parseAndSanitize(text, rashi);
+        horoscopes[rashi.toLowerCase()] = data;
         console.log(`[Gemini:${this.period}] ✅ ${rashi} (${i + 1}/${rashis.length})`);
+
+        if (onEach) {
+          try {
+            await onEach(rashi, data);
+          } catch (saveErr) {
+            console.error(`[Gemini:${this.period}] ⚠️ onEach save failed for ${rashi}: ${saveErr.message}`);
+          }
+        }
       } catch (err) {
         if (err instanceof QuotaError) {
           console.error(`[Gemini:${this.period}] 🛑 Quota at ${rashi} — saved ${Object.keys(horoscopes).length}`);
@@ -154,8 +158,6 @@ export class GeminiHoroscopeService {
   }
 }
 
-// ── Prompt — detailed, accurate, engaging Vedic content ──────────────────────
-// ── Prompt — NO time-specific words (today, this month, etc) ─────────────────
 function buildPrompt(rashi, date, period) {
   const d = date instanceof Date ? date : new Date(date);
 
@@ -225,7 +227,6 @@ Return ONLY raw JSON (no markdown, no code fences):
 }`;
 }
 
-// ── Parse + sanitize ──────────────────────────────────────────────────────────
 function parseAndSanitize(text, rashi) {
   let parsed;
   try {

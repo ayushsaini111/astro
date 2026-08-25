@@ -52,6 +52,7 @@ export async function GET(request, { params }) {
       offer_price: parseFloat(result[0].offer_price),
       rating: parseFloat(result[0].rating)
     };
+    console.log("ll",pooja)
 
     return NextResponse.json(pooja);
   } catch (error) {

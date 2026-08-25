@@ -1,7 +1,7 @@
 {
   "functions": {
     "src/app/api/horoscope/cron/route.js": {
-      "maxDuration": 180
+      "maxDuration": 300
     }
   },
   "crons": [
@@ -21,7 +21,7 @@
       "path": "/api/horoscope/cron?secret=your_super_secret_cron_key_here&period=yearly",
       "schedule": "12 0 1 1 *"
     },
-     {
+    {
       "path": "/api/admins/reminders/process",
       "schedule": "30 1 * * *"
     },
@@ -30,9 +30,4 @@
       "schedule": "30 2 * * *"
     }
   ]
-  
 }
-
-
-
-

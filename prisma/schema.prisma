@@ -42,9 +42,16 @@ model User {
   userHoroscope          UserHoroscope?
   plans                  UserPlan[]
   wallet                 Wallet?
+  communityJoin CommunityJoin?
 
   @@index([phone])
   @@index([email])
+}
+model CommunityJoin {
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  joinedAt  DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model OTPVerification {
@@ -62,50 +69,50 @@ model OTPVerification {
 }
 
 model Booking {
-  id                    String       @id @default(cuid())
-  userId                String
-  bookingId             String?       @unique
-  poojaId               Int
-  poojaTitle            String
-  poojaType             PoojaType    @default(OFFLINE)  // ONLINE or OFFLINE
-  poojaImage            String?
-  duration              String?
-  amount                Int
-  originalPrice         Int?
-  discount              Int?
-  customerName          String
-  customerPhone         String       @db.VarChar(10)
-  customerEmail         String
-  houseNo               String?
-  address               String?
-  landmark              String?
-  pinCode               String?      @db.VarChar(6)
-  scheduledDate         String
-   scheduledTime         String?
-  status                BookingStatus @default(PENDING)  // PENDING, CONFIRMED, COMPLETED, CANCELLED
-  paymentStatus         PaymentStatus @default(PENDING)
-  razorpayOrderId       String?      @unique
-  razorpayPaymentId     String?      @unique
-  razorpaySignature     String?
-  specialRequests       String?
-  panditNotes           String?
-  
+  id                String        @id @default(cuid())
+  userId            String
+  bookingId         String?       @unique
+  poojaId           Int
+  poojaTitle        String
+  poojaType         PoojaType     @default(OFFLINE) // ONLINE or OFFLINE
+  poojaImage        String?
+  duration          String?
+  amount            Int
+  originalPrice     Int?
+  discount          Int?
+  customerName      String
+  customerPhone     String        @db.VarChar(10)
+  customerEmail     String
+  houseNo           String?
+  address           String?
+  landmark          String?
+  pinCode           String?       @db.VarChar(6)
+  scheduledDate     String
+  scheduledTime     String?
+  status            BookingStatus @default(PENDING) // PENDING, CONFIRMED, COMPLETED, CANCELLED
+  paymentStatus     PaymentStatus @default(PENDING)
+  razorpayOrderId   String?       @unique
+  razorpayPaymentId String?       @unique
+  razorpaySignature String?
+  specialRequests   String?
+  panditNotes       String?
+
   // ✅ NEW FIELDS FOR ONLINE POOJAS
-  videoLink             String?      // Video link after completion
-  certificateUrl        String?      // Generated certificate PDF URL
-certificateVerificationCode String? @unique @default(cuid())// Unique code for certificate
-  
+  videoLink                   String? // Video link after completion
+  certificateUrl              String? // Generated certificate PDF URL
+  certificateVerificationCode String? @unique @default(cuid()) // Unique code for certificate
+
   // ✅ NEW FIELDS FOR REMINDERS
-  remindersScheduled    Boolean      @default(false)
-  
-  createdAt             DateTime     @default(now())
-  updatedAt             DateTime     @updatedAt
-  completedAt           DateTime?
-  cancelledAt           DateTime?
-  
+  remindersScheduled Boolean @default(false)
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  completedAt DateTime?
+  cancelledAt DateTime?
+
   // Relations
-  user                  User         @relation(fields: [userId], references: [id], onDelete: Cascade)
-  reminders             Reminder[]   // ✅ ADD THIS
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  reminders Reminder[] // ✅ ADD THIS
 
   @@index([userId])
   @@index([status])
@@ -114,26 +121,26 @@ certificateVerificationCode String? @unique @default(cuid())// Unique code for c
 }
 
 model Reminder {
-  id               String            @id @default(cuid())
-  bookingId        String
-  reminderType     ReminderType      // CONFIRMATION, ONE_DAY_BEFORE, ONE_HOUR_BEFORE
-  scheduledTime    DateTime
-  sent             Boolean           @default(false)
-  sentAt           DateTime?
-  sentVia          String            @default("WHATSAPP")  // WHATSAPP, EMAIL, SMS
-  errorMessage     String?
-  retryCount       Int               @default(0)
-  maxRetries       Int               @default(3)
-  createdAt        DateTime          @default(now())
-  updatedAt        DateTime          @updatedAt
-  
-  // Relations
-  booking          Booking           @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  id            String       @id @default(cuid())
+  bookingId     String
+  reminderType  ReminderType // CONFIRMATION, ONE_DAY_BEFORE, ONE_HOUR_BEFORE
+  scheduledTime DateTime
+  sent          Boolean      @default(false)
+  sentAt        DateTime?
+  sentVia       String       @default("WHATSAPP") // WHATSAPP, EMAIL, SMS
+  errorMessage  String?
+  retryCount    Int          @default(0)
+  maxRetries    Int          @default(3)
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
 
+  // Relations
+  booking Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+
+  @@unique([bookingId, reminderType]) // One reminder per type per booking
   @@index([bookingId])
   @@index([scheduledTime])
   @@index([sent])
-  @@unique([bookingId, reminderType])  // One reminder per type per booking
 }
 
 model FreeCallUsage {
@@ -329,7 +336,7 @@ model UserPlan {
 }
 
 model Product {
-  id               String          @id @default(cuid())
+  id               String               @id @default(cuid())
   title            String
   shortDescription String?
   description      String?
@@ -337,17 +344,17 @@ model Product {
   category         String
   price            Float
   originalPrice    Float?
-  rating           Float?          @default(0)
-  reviews          Int             @default(0)
+  rating           Float?               @default(0)
+  reviews          Int                  @default(0)
   image            String?
   images           String[]
-  inStock          Boolean         @default(true)
-  isActive         Boolean         @default(true)
+  inStock          Boolean              @default(true)
+  isActive         Boolean              @default(true)
   benefits         String[]
-  tags             String[]        @default([])  // ✅ for filter tags
-  specifications   Json?           // flexible key-value
-  createdAt        DateTime        @default(now())
-  updatedAt        DateTime        @updatedAt
+  tags             String[]             @default([]) // ✅ for filter tags
+  specifications   Json? // flexible key-value
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
   orderItems       OrderItem[]
   testimonials     ProductTestimonial[]
 
@@ -355,18 +362,20 @@ model Product {
   @@index([isActive])
   @@index([tags])
 }
+
 model ProductTestimonial {
-  id         String   @id @default(cuid())
-  productId  String
-  name       String
-  location   String?
-  rating     Int      @default(5)
-  text       String
-  date       DateTime @default(now())
-  product    Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  id        String   @id @default(cuid())
+  productId String
+  name      String
+  location  String?
+  rating    Int      @default(5)
+  text      String
+  date      DateTime @default(now())
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
 
   @@index([productId])
 }
+
 model pooja_testimonials {
   id         Int      @id @default(autoincrement())
   pooja_id   Int
@@ -377,9 +386,59 @@ model pooja_testimonials {
   created_at DateTime @default(now()) @db.Timestamp(6)
   updated_at DateTime @default(now()) @updatedAt @db.Timestamp(6)
 
-  poojas     poojas   @relation(fields: [pooja_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  poojas poojas @relation(fields: [pooja_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@index([pooja_id], map: "idx_pooja_testimonials_pooja_id")
+}
+
+// ── NEW MODEL ────────────────────────────────────────────────
+model pooja_content {
+  id                    Int      @id @default(autoincrement())
+  pooja_id              Int      @unique
+
+  // Hero
+  hero_subtitle         String?  @db.Text
+  hero_access           String?  @db.VarChar(50)   // e.g. "Live"
+  hero_benefits         Json?                       // ["Peace & Harmony", "Prosperity"]
+
+  // About + Live Experience
+  about_title           String?  @db.VarChar(255)
+  about_content         String?  @db.Text
+  live_title            String?  @db.VarChar(255)
+  live_content          String?  @db.Text
+
+  // How It Works
+  how_it_works          Json?    // [{ step:"01", title:"", description:"" }]
+
+  // What Happens During Pooja
+  process_intro         String?  @db.Text
+  process_steps         Json?    // [{ title:"", description:"" }]
+
+  // What To Prepare
+  preparation_note      String?  @db.Text
+  preparation_required  Json?    // ["A quiet clean space", ...]
+  preparation_optional  Json?    // ["A diya", ...]
+
+  // Cultural Roots
+  cultural_title        String?  @db.VarChar(255)
+  cultural_story        String?  @db.Text
+  cultural_chapters     Json?    // [{ chapter:1, title:"", description:"" }]
+  cultural_closing      String?  @db.Text
+
+  // FAQs
+  faqs                  Json?    // [{ question:"", answer:"" }]
+
+  // Closing CTA
+  closing_title         String?  @db.VarChar(255)
+  closing_description   String?  @db.Text
+  closing_tags          Json?    // ["Live Katha", "Personalized Sankalp"]
+
+  created_at            DateTime? @default(now()) @db.Timestamp(6)
+  updated_at            DateTime? @default(now()) @db.Timestamp(6)
+
+  poojas poojas @relation(fields: [pooja_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([pooja_id], map: "idx_pooja_content_pooja_id")
 }
 
 model ProductCategory {
@@ -393,40 +452,41 @@ model ProductCategory {
 
   @@index([isActive])
 }
+
 model Order {
-  id                String         @id @default(cuid())
-  userId            String
-  orderId           String         @unique @default(cuid())
-  totalAmount       Float
-  status            OrderStatus    @default(PENDING)
+  id          String      @id @default(cuid())
+  userId      String
+  orderId     String      @unique @default(cuid())
+  totalAmount Float
+  status      OrderStatus @default(PENDING)
 
   // Delivery Address
-  houseNo           String?
-  address           String?
-  landmark          String?
-  pinCode           String?        @db.VarChar(6)
-  latitude          Float?
-  longitude         Float?
-  addressType       String?
-  fullAddress       String         @default("")
+  houseNo     String?
+  address     String?
+  landmark    String?
+  pinCode     String? @db.VarChar(6)
+  latitude    Float?
+  longitude   Float?
+  addressType String?
+  fullAddress String  @default("")
 
   // Customer Details
-  customerName      String         @default("")
-  customerPhone     String         @default("") @db.VarChar(10)
-  customerEmail     String         @default("")
+  customerName  String @default("")
+  customerPhone String @default("") @db.VarChar(10)
+  customerEmail String @default("")
 
   // Product Details
-  productId         String?
-  productTitle      String?
-  productImage      String?
-  quantity          Int?
-  unitPrice         Float?
+  productId    String?
+  productTitle String?
+  productImage String?
+  quantity     Int?
+  unitPrice    Float?
 
   // Payment Details
-  razorpayOrderId   String?        @unique
-  razorpayPaymentId String?        @unique
+  razorpayOrderId   String?       @unique
+  razorpayPaymentId String?       @unique
   razorpaySignature String?
-  paymentStatus     PaymentStatus  @default(PENDING)
+  paymentStatus     PaymentStatus @default(PENDING)
 
   // Additional
   specialRequests   String?
@@ -434,13 +494,15 @@ model Order {
   estimatedDelivery DateTime?
   deliveredAt       DateTime?
   cancelledAt       DateTime?
+  shuddhikaranRequested Boolean @default(false)
+  shuddhikaranAmount    Float   @default(0)
 
-  createdAt         DateTime       @default(now())
-  updatedAt         DateTime       @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  user              User           @relation(fields: [userId], references: [id])
-  items             OrderItem[]
-  deliveries        Delivery[]     // ✅ Add this relation
+  user       User        @relation(fields: [userId], references: [id])
+  items      OrderItem[]
+  deliveries Delivery[] // ✅ Add this relation
 
   @@index([userId])
   @@index([orderId])
@@ -449,14 +511,14 @@ model Order {
 }
 
 model OrderItem {
-  id        String @id @default(cuid())
+  id        String   @id @default(cuid())
   orderId   String
   productId String?
   quantity  Int
   price     Float
-  order     Order  @relation(fields: [orderId], references: [id])
-  product   Product? @relation(fields: [productId], references: [id]) 
-  
+  order     Order    @relation(fields: [orderId], references: [id])
+  product   Product? @relation(fields: [productId], references: [id])
+
   @@index([orderId])
   @@index([productId])
 }
@@ -492,18 +554,19 @@ model DeliveryPartner {
   updatedAt   DateTime   @default(now()) @updatedAt
   deliveries  Delivery[]
 }
+
 model Delivery {
-  id          String          @id @default(cuid())
+  id          String    @id @default(cuid())
   orderId     String
   partnerId   String
-  status      String          @default("ASSIGNED")
-  assignedAt  DateTime        @default(now())
+  status      String    @default("ASSIGNED")
+  assignedAt  DateTime  @default(now())
   deliveredAt DateTime?
-  createdAt   DateTime        @default(now())
-  updatedAt   DateTime        @default(now()) @updatedAt
-  
-  order       Order           @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  partner     DeliveryPartner @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @default(now()) @updatedAt
+
+  order   Order           @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  partner DeliveryPartner @relation(fields: [partnerId], references: [id], onDelete: Cascade)
 
   @@index([orderId])
   @@index([partnerId])
@@ -642,24 +705,25 @@ model pooja_languages {
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 model poojas {
-  id                Int               @id @default(autoincrement())
-  title             String            @db.VarChar(255)
-  short_description String?
-  description       String?
-  price             Decimal           @db.Decimal(10, 2)
-  offer_price       Decimal           @db.Decimal(10, 2)
-  duration          String?           @db.VarChar(100)
-  mode              String            @db.VarChar(50)
-  image             String?           @db.VarChar(500)
-  rating            Decimal?          @default(0) @db.Decimal(3, 2)
-  bookings          String?           @default("0") @db.VarChar(50)
-  popular           Boolean?          @default(false)
-  category          String            @db.VarChar(20)
-  created_at        DateTime?         @default(now()) @db.Timestamp(6)
-  updated_at        DateTime?         @default(now()) @db.Timestamp(6)
-  filter            String?           @db.VarChar(100)
-  pooja_languages   pooja_languages[]
-    pooja_testimonials pooja_testimonials[] 
+  id                 Int                  @id @default(autoincrement())
+  title              String               @db.VarChar(255)
+  short_description  String?
+  description        String?
+  price              Decimal              @db.Decimal(10, 2)
+  offer_price        Decimal              @db.Decimal(10, 2)
+  duration           String?              @db.VarChar(100)
+  mode               String               @db.VarChar(50)
+  image              String?              @db.VarChar(500)
+  rating             Decimal?             @default(0) @db.Decimal(3, 2)
+  bookings           String?              @default("0") @db.VarChar(50)
+  popular            Boolean?             @default(false)
+  category           String               @db.VarChar(20)
+  created_at         DateTime?            @default(now()) @db.Timestamp(6)
+  updated_at         DateTime?            @default(now()) @db.Timestamp(6)
+  filter             String?              @db.VarChar(100)
+  pooja_languages    pooja_languages[]
+  pooja_testimonials pooja_testimonials[]
+   pooja_content      pooja_content? 
 
   @@index([category], map: "idx_poojas_category")
   @@index([popular], map: "idx_poojas_popular")
@@ -669,7 +733,7 @@ model CalendarAvailability {
   id          String   @id @default(cuid())
   date        DateTime @unique @db.Date
   isAvailable Boolean  @default(true)
-  timeSlots   Json     // Remove default, handle in code
+  timeSlots   Json // Remove default, handle in code
   reason      String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -677,6 +741,7 @@ model CalendarAvailability {
   @@index([date])
   @@index([isAvailable])
 }
+
 enum CallStatus {
   INITIATED
   RINGING
@@ -716,11 +781,12 @@ enum BookingStatus {
   COMPLETED
   CANCELLED
 }
+
 enum ReminderType {
-  CONFIRMATION          // Immediate after booking
-  ONE_DAY_BEFORE        // Day before at 8 AM
-  MORNING_OF_POOJA      // Morning of pooja at 8 AM
-  ONE_HOUR_BEFORE       // 1 hour before pooja
+  CONFIRMATION // Immediate after booking
+  ONE_DAY_BEFORE // Day before at 8 AM
+  MORNING_OF_POOJA // Morning of pooja at 8 AM
+  ONE_HOUR_BEFORE // 1 hour before pooja
 }
 
 enum PaymentStatus {
@@ -730,6 +796,7 @@ enum PaymentStatus {
   PAID
   REFUNDED
 }
+
 enum AuthProvider {
   PHONE
   GOOGLE
@@ -747,12 +814,12 @@ enum PoojaType {
 }
 
 model WhatsAppMessage {
-  id           String   @id @default(cuid())
-  fromNumber   String   // customer's phone number
-  messageText  String
-  bookingId    String?  // matched booking, if any
-  waMessageId  String?  @unique // Meta's message ID, prevents duplicate webhook processing
-  receivedAt   DateTime @default(now())
+  id          String   @id @default(cuid())
+  fromNumber  String // customer's phone number
+  messageText String
+  bookingId   String? // matched booking, if any
+  waMessageId String?  @unique // Meta's message ID, prevents duplicate webhook processing
+  receivedAt  DateTime @default(now())
 
   @@index([fromNumber])
   @@index([bookingId])

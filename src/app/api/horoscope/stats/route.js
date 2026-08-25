@@ -13,8 +13,8 @@ export async function GET(request) {
     return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
   }
 
-  const purged = purgeExpired();
-  const stats = getCacheStats();
+  const purged = await purgeExpired();
+  const stats = await getCacheStats();
 
   return NextResponse.json({
     success: true,

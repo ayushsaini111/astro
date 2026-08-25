@@ -7,19 +7,18 @@ import {
   toDateKey,
 } from '@/lib/ai/geminiService';
 import {
-  setCachedBatch,
+  setCached,
   getMissingRashis,
   logGeneration,
   cleanupOldCache,
 } from '@/lib/horoscope/horoscopeCache';
 
-const VALID_PERIODS = ['daily', 'weekly', 'monthly', 'yearly']; // ✅ Added yearly
-const GENERATE_DATES = [-1, 0, 1]; // yesterday, today, tomorrow
+const VALID_PERIODS = ['daily', 'weekly', 'monthly', 'yearly'];
+const GENERATE_DATES = [0, 1]; // today, tomorrow — "previous" stays cached from when it was "current"
 
 export async function GET(request) {
   const { searchParams } = new URL(request.url);
 
-  // ── Auth ──────────────────────────────────────────────────────────────────
   const secret = searchParams.get('secret');
   if (secret !== process.env.CRON_SECRET) {
     return json({ success: false, error: 'Unauthorized' }, 401);
@@ -38,21 +37,17 @@ export async function GET(request) {
 
   console.log(`\n🌙 [Cron] ${period} generation started at ${new Date().toISOString()}`);
 
-  // ── 1. Cleanup old entries ────────────────────────────────────────────────
   const cleanupResults = await cleanupOldCache();
   console.log(`✅ Cleanup: deleted ${cleanupResults[period]?.deleted || 0} old ${period} entries`);
 
-  // ✅ Create service with period-specific API key
   const gemini = new GeminiHoroscopeService(period);
 
   const results = {};
   let totalCalls = 0;
 
-  // ── 2. Generate yesterday, today, tomorrow ────────────────────────────────
   for (const dayOffset of GENERATE_DATES) {
     const date = new Date();
-    
-    // ✅ Handle different period offsets
+
     if (period === 'daily') {
       date.setDate(date.getDate() + dayOffset);
     } else if (period === 'weekly') {
@@ -60,11 +55,11 @@ export async function GET(request) {
     } else if (period === 'monthly') {
       date.setMonth(date.getMonth() + dayOffset);
     } else if (period === 'yearly') {
-      date.setFullYear(date.getFullYear() + dayOffset); // ✅ Added
+      date.setFullYear(date.getFullYear() + dayOffset);
     }
 
     const dateKey = toDateKey(date);
-    const label = dayOffset === -1 ? 'previous' : dayOffset === 0 ? 'current' : 'next';
+    const label = dayOffset === 0 ? 'current' : 'next';
 
     const missing = force ? [...ALL_RASHIS] : await getMissingRashis(ALL_RASHIS, period, date);
 
@@ -76,14 +71,18 @@ export async function GET(request) {
 
     console.log(`🔮 Generating ${label} ${period} (${dateKey}) — ${missing.length} rashis needed`);
 
-    const { horoscopes, apiCalls } = await gemini.generateBatch(date, period, missing);
+    // Each rashi saves to the DB the moment it's generated — no more waiting
+    // for the whole batch to finish, so live user requests hit cache immediately
+    const { horoscopes, apiCalls } = await gemini.generateBatch(
+      date, period, missing,
+      async (rashi, data) => { await setCached(rashi, period, date, data); }
+    );
     const generated = Object.keys(horoscopes).length;
 
-    if (generated > 0) {
-      await setCachedBatch(horoscopes, period, date);
+    if (generated > 0 || missing.length > 0) {
       await logGeneration(
         date, period, generated, apiCalls,
-        generated === missing.length ? 'SUCCESS' : 'PARTIAL'
+        generated === missing.length ? 'SUCCESS' : generated > 0 ? 'PARTIAL' : 'FAILED'
       );
     }
 
