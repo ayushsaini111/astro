@@ -1,9 +1,10 @@
 const nextConfig = {
   reactStrictMode: false,
 
-  turbopack: {
-    root: "D:\\OryviaProjects\\astro",
-  },
+  // Only set turbopack.root when running locally on Windows — never on Vercel
+  ...(process.env.VERCEL
+    ? {}
+    : { turbopack: { root: "D:\\OryviaProjects\\astro" } }),
 
   outputFileTracingIncludes: {
     "/api/kundali/generate": [
@@ -11,7 +12,6 @@ const nextConfig = {
     ],
   },
 
-  // Merge both external packages
   serverExternalPackages: [
     "@fusionstrings/swisseph-wasi",
     "better-sqlite3",
@@ -46,7 +46,6 @@ const nextConfig = {
         : config.externals
         ? [config.externals]
         : [];
-
       config.externals = [...externals, 'better-sqlite3', 'node-cron'];
     } else {
       config.resolve.fallback = {
@@ -58,7 +57,6 @@ const nextConfig = {
         crypto: false,
       };
     }
-
     return config;
   },
 };
