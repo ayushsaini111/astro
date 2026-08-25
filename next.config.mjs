@@ -2,10 +2,10 @@
 const nextConfig = {
   reactStrictMode: false,
 
-  // Target explicit route paths (Next.js keys do NOT support wildcards like '/api/**/*')
   outputFileTracingIncludes: {
     '/api/kundali/generate': ['./node_modules/@fusionstrings/swisseph-wasi/**/*'],
-    '/api/kundali/match': ['./node_modules/@fusionstrings/swisseph-wasi/**/*'],
+    'src/app/api/kundali/generate/route': ['./node_modules/@fusionstrings/swisseph-wasi/**/*'],
+    'app/api/kundali/generate/route': ['./node_modules/@fusionstrings/swisseph-wasi/**/*'],
   },
 
   turbopack: {
