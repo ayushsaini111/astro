@@ -1,11 +1,6 @@
 const nextConfig = {
   reactStrictMode: false,
 
-  // Absolute local path only for Windows dev; empty object on Vercel
-  turbopack: process.env.VERCEL
-    ? {}
-    : { root: "D:\\OryviaProjects\\astro" },
-
   outputFileTracingIncludes: {
     "/api/kundali/generate": [
       "./node_modules/@fusionstrings/swisseph-wasi/esm/generated/**",
