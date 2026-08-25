@@ -1,7 +1,8 @@
+/** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: false,
 
-  // Force Vercel to trace and bundle WASM binaries for app/api routes
+  // Force Vercel to explicitly bundle the WASM directory for all API routes
   outputFileTracingIncludes: {
     '/api/**/*': ['./node_modules/@fusionstrings/swisseph-wasi/**/*'],
   },
@@ -29,7 +30,7 @@ const nextConfig = {
         source: "/api/:path*",
         headers: [
           { key: "Access-Control-Allow-Credentials", value: "true" },
-          { key: "Access-Control-Allow-Origin", value: "http://localhost:3000" },
+          { key: "Access-Control-Allow-Origin", value: "*" },
           { key: "Access-Control-Allow-Methods", value: "GET,DELETE,PATCH,POST,PUT,OPTIONS" },
           { key: "Access-Control-Allow-Headers", value: "Content-Type, Authorization, X-Requested-With" },
         ],
