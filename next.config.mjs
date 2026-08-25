@@ -2,9 +2,10 @@
 const nextConfig = {
   reactStrictMode: false,
 
-  // Force Vercel to explicitly bundle the WASM directory for all API routes
+  // Target explicit route paths (Next.js keys do NOT support wildcards like '/api/**/*')
   outputFileTracingIncludes: {
-    '/api/**/*': ['./node_modules/@fusionstrings/swisseph-wasi/**/*'],
+    '/api/kundali/generate': ['./node_modules/@fusionstrings/swisseph-wasi/**/*'],
+    '/api/kundali/match': ['./node_modules/@fusionstrings/swisseph-wasi/**/*'],
   },
 
   turbopack: {
