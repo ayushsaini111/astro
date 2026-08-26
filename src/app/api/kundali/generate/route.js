@@ -1,34 +1,24 @@
 import { NextResponse } from "next/server";
 import { DateTime } from "luxon";
 import geoTz from "geo-tz";
+import fs from "node:fs";
+import path from "node:path";
 import { load, Constants } from "@fusionstrings/swisseph-wasi";
-import path from "path";
-import fs from "fs";
-import { createRequire } from "module";
 
-// Force Vercel's NFT bundler to bundle libswephe.wasm into /var/task/
-const require = createRequire(import.meta.url);
-try {
-  const pkgPath = require.resolve("@fusionstrings/swisseph-wasi/package.json");
-  const wasmPath = path.join(path.dirname(pkgPath), "esm/generated/libswephe.wasm");
-  if (fs.existsSync(wasmPath)) {
-    fs.readFileSync(wasmPath); // Statically detected by @vercel/nft tracer
-  }
-} catch (e) {
-  // Silent fallback for build time
-}
+export const runtime = "nodejs";
 
 let ephPromise = null;
 function getEph() {
   if (!ephPromise) {
-    ephPromise = load().then((eph) => {
+    const wasmPath = path.join(process.cwd(), "src/wasm/libswephe.wasm");
+    const wasmBytes = fs.readFileSync(wasmPath);
+    ephPromise = load({ wasmSource: new Uint8Array(wasmBytes) }).then((eph) => {
       eph.swe_set_sid_mode(Constants.SE_SIDM_LAHIRI, 0, 0);
       return eph;
     });
   }
   return ephPromise;
 }
-
 const VALID_GENDERS = ["MALE", "FEMALE", "OTHER"];
 
 const NAKSHATRAS = [
@@ -66,6 +56,7 @@ const SIGNS = [
   "Libra", "Scorpio", "Sagittarius", "Capricorn", "Aquarius", "Pisces",
 ];
 
+// index 0 = Aries lord ... index 11 = Pisces lord
 const SIGN_LORDS = [
   "mars", "venus", "mercury", "moon", "sun", "mercury",
   "venus", "mars", "jupiter", "saturn", "saturn", "jupiter",
@@ -76,6 +67,7 @@ const OWN_SIGNS = {
   jupiter: [9, 12], venus: [2, 7], saturn: [10, 11],
 };
 
+// sign numbers are 1-indexed (Aries = 1)
 const EXALTATION = {
   sun: 1, moon: 2, mars: 10, mercury: 6, jupiter: 4, venus: 12, saturn: 7,
 };
@@ -100,6 +92,7 @@ const NATURAL_ENEMIES = {
   saturn: ["sun", "moon", "mars"],
 };
 
+// orb in degrees within which a planet is considered combust (too close to the Sun)
 const COMBUSTION_ORB = { moon: 12, mars: 17, mercury: 14, venus: 10, jupiter: 11, saturn: 15 };
 
 const PLANET_SYMBOLS = {
@@ -117,10 +110,12 @@ const PLANET_IDS = {
   saturn: Constants.SE_SATURN,
 };
 
+// Vimshottari Dasha — 120 year cycle
 const DASHA_YEARS = { Ketu: 7, Venus: 20, Sun: 6, Moon: 10, Mars: 7, Rahu: 18, Jupiter: 16, Saturn: 19, Mercury: 17 };
 const DASHA_ORDER = ["Ketu", "Venus", "Sun", "Moon", "Mars", "Rahu", "Jupiter", "Saturn", "Mercury"];
 const NAK_SPAN = 360 / 27;
 
+// Jaimini karakas
 const KARAKA_LABELS = ["Atma", "Amatya", "Bhratru", "Matru", "Putra", "Gnati", "Dara"];
 const STHIR_KARAKAS = [
   { karaka: "Atma", planet: "sun" },
@@ -148,6 +143,8 @@ function getNakshatra(longitude) {
   return { ...NAKSHATRAS[index], number: index + 1, pada };
 }
 
+// Simplified Navamsa (D9) sign formula:
+// navamsaSignIndex = (signIndex*9 + navamsaSegmentWithinSign) mod 12
 function getNavamsaSignIndex(longitude) {
   const norm = normDeg(longitude);
   const signIndex = Math.floor(norm / 30);
@@ -157,7 +154,7 @@ function getNavamsaSignIndex(longitude) {
 }
 
 function getRelation(planetKey, signNumber) {
-  if (!SIGN_LORDS.includes(planetKey)) return null;
+  if (!SIGN_LORDS.includes(planetKey)) return null; // rahu/ketu — dignity not classically assigned
   const exaltSign = EXALTATION[planetKey];
   if (exaltSign === signNumber) return "Exalted";
   const debilSign = exaltSign ? ((exaltSign - 1 + 6) % 12) + 1 : null;
@@ -206,7 +203,7 @@ function formatPlanet(name, longitude, speed) {
     nakshatra: getNakshatra(norm),
     house: null,
     isRetrograde: speed < 0,
-    relation: null,
+    relation: null, // filled in after all planets are computed
     isCombust: false,
   };
 }
@@ -380,11 +377,13 @@ export async function POST(request) {
     planets.rahu = formatPlanet("rahu", rahuRes.xx[0], -1);
     planets.ketu = formatPlanet("ketu", rahuRes.xx[0] + 180, -1);
 
+    // dignity + combustion (needs full planet set, so done after the loop)
     Object.entries(planets).forEach(([key, p]) => {
       p.relation = getRelation(key, p.signNumber);
       p.isCombust = key === "sun" ? false : isCombust(key, p.longitude, planets.sun.longitude);
     });
 
+    // Ascendant
     const houseRes = eph.swe_houses(jd, latitude, longitude, "W");
     const ascLongitude = normDeg(houseRes.ascmc[0]);
     const ascendant = {
@@ -397,6 +396,7 @@ export async function POST(request) {
       nakshatra: getNakshatra(ascLongitude),
     };
 
+    // Lagna (Rashi) chart — Whole Sign houses
     const ascSignIndex = Math.floor(ascLongitude / 30);
     const houses = buildWholeSignHouses(ascSignIndex, planets);
     Object.entries(planets).forEach(([planetName, planetData]) => {
@@ -404,9 +404,11 @@ export async function POST(request) {
       planetData.house = ((planetSignIndex - ascSignIndex + 12) % 12) + 1;
     });
 
+    // Navamsa (D9) chart
     const navamsaAscSignIndex = getNavamsaSignIndex(ascLongitude);
     const navamsaPlanetLongitudes = {};
     Object.entries(planets).forEach(([key, p]) => {
+      // fabricate a "longitude" that lands in the correct navamsa sign for house-building reuse
       navamsaPlanetLongitudes[key] = { ...p, longitude: getNavamsaSignIndex(p.longitude) * 30 + 1 };
     });
     const navamsaHouses = buildWholeSignHouses(navamsaAscSignIndex, navamsaPlanetLongitudes);
@@ -415,9 +417,15 @@ export async function POST(request) {
       houses: navamsaHouses,
     };
 
+    // Vimshottari Dasha
     const dasha = computeVimshottariDasha(planets.moon.longitude, localDt);
+
+    // Jaimini Karakas
     const karakas = { sthir: STHIR_KARAKAS, chara: computeCharaKarakas(planets) };
+
+    // Avasthas
     const avasthas = computeAvasthas(planets);
+
     const ayanamsaValue = eph.swe_get_ayanamsa_ut(jd);
 
     const kundali = {

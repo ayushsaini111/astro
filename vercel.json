@@ -1,11 +1,7 @@
 {
   "functions": {
-    "src/app/api/**/*": {
-      "includeFiles": "node_modules/@fusionstrings/swisseph-wasi/**"
-    },
     "src/app/api/horoscope/cron/route.js": {
-      "maxDuration": 300,
-      "includeFiles": "node_modules/@fusionstrings/swisseph-wasi/**"
+      "maxDuration": 300
     }
   },
   "crons": [
