@@ -1,13 +1,19 @@
 import { NextResponse } from "next/server";
 import { DateTime } from "luxon";
 import geoTz from "geo-tz";
+import fs from "node:fs";
+import path from "node:path";
 import { load, Constants } from "@fusionstrings/swisseph-wasi";
 import { gunaMilan } from "@/lib/gunaMilan";
+
+export const runtime = "nodejs";
 
 let ephPromise = null;
 function getEph() {
   if (!ephPromise) {
-    ephPromise = load().then((eph) => {
+    const wasmPath = path.join(process.cwd(), "src/wasm/libswephe.wasm");
+    const wasmBytes = fs.readFileSync(wasmPath);
+    ephPromise = load({ wasmSource: new Uint8Array(wasmBytes) }).then((eph) => {
       eph.swe_set_sid_mode(Constants.SE_SIDM_LAHIRI, 0, 0);
       return eph;
     });
