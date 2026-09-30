@@ -28,6 +28,7 @@ model User {
   isProfileCompleted     Boolean           @default(false)
   landmark               String?
   name                   String?
+  fcmToken               String?
   pinCode                String?           @db.VarChar(6)
   provider               AuthProvider      @default(PHONE)
   gender                 Gender?
