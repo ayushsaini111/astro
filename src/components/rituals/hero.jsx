@@ -25,7 +25,7 @@ function HeroCard() {
       "
     >
 
-      {/* Content */}
+      {/* Content content */}
       <div className="max-w-[80%]">
 
         <h2 className="heading-h3 text-white leading-tight">
