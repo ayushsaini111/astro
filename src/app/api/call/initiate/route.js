@@ -1,4 +1,3 @@
-// backend/src/app/api/call/initiate/route.js
 import { prisma } from "@/lib/prisma";
 import { generateAgoraToken } from "@/lib/agora";
 import { NextResponse } from "next/server";
@@ -14,22 +13,18 @@ const FREE_CALL_SECONDS = 5;
 export async function POST(req) {
   const body = await req.json();
 
-  // 1. Try header first (forwarded by frontend proxy)
   let userId = req.headers.get("x-user-id");
 
-  // 2. Fallback: cookie
   if (!userId) {
     const cookieStore = await cookies();
     userId = cookieStore.get("userId")?.value;
   }
 
-  // 3. Fallback: session
   if (!userId) {
     const session = await getServerSession(authOptions);
     userId = session?.user?.id;
   }
 
-  // 4. Fallback: body (legacy)
   if (!userId) userId = body.userId;
 
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -44,8 +39,7 @@ export async function POST(req) {
   const [user, freeUsage, activePlan] = await Promise.all([
     prisma.user.findUnique({
       where: { id: userId },
-      // ✅ Select name (not username) — name is what's required
-      select: { name: true, username: true, dob: true },
+      select: { name: true, username: true, dob: true, fcmToken: true }, // ✅ ADD fcmToken
     }),
     prisma.freeCallUsage.findUnique({ where: { userId } }),
     prisma.userPlan.findFirst({
@@ -68,7 +62,6 @@ export async function POST(req) {
 
   if (!user) return NextResponse.json({ error: "User not found" }, { status: 404 });
 
-  // ✅ Only name is required — username and DOB are optional
   if (!user.name) {
     return NextResponse.json({ error: "INCOMPLETE_PROFILE" }, { status: 403 });
   }
@@ -81,7 +74,6 @@ export async function POST(req) {
     );
   }
 
-  // Daily limit check for TOPUP plans
   if (!hasFreeCall && activePlan?.plan.planType === "TOPUP") {
     const lastUsedDate = activePlan.lastUsedDate
       ? new Date(activePlan.lastUsedDate.toDateString())
@@ -111,13 +103,11 @@ export async function POST(req) {
     }
   }
 
-  // Cancel any stale INITIATED calls for this user+pandit pair
   await prisma.call.updateMany({
     where: { userId, panditId, status: "INITIATED" },
     data: { status: "FAILED" },
   });
 
-  // Create Agora channel
   const channelName = `ch${randomBytes(8).toString("hex")}`;
   const uid = Math.floor(Math.random() * 100000);
   const token = generateAgoraToken(channelName, uid);
@@ -136,31 +126,59 @@ export async function POST(req) {
     },
   });
 
-  // Notify pandit via SSE
+  // ✅ Notify pandit via SSE
   sendEvent(`pandit-${panditId}`, "incoming-call", {
     callId: call.id,
     user: { name: user.name, username: user.username, dob: user.dob },
     createdAt: call.createdAt,
   });
 
-  // Fetch pandit for FCM
+  // ✅ Send FCM to USER so call shows even if app is killed
+  if (user?.fcmToken) {
+    try {
+      await messaging.send({
+        token: user.fcmToken,
+        data: {
+          type:        'incoming_call',
+          callId:      call.id,
+          channelName: channelName,
+          token:       token,
+          appId:       process.env.AGORA_APP_ID,
+          uid:         String(uid),
+          callerName:  'Spiritual Expert',
+          panditName:  'Spiritual Expert',
+        },
+        android: {
+          priority: 'high',
+          ttl:      30000,
+        },
+        apns: {
+          payload: {
+            aps: { contentAvailable: true },
+          },
+          headers: {
+            'apns-priority': '5',
+          },
+        },
+      });
+      console.log('✅ FCM sent to user:', user.name);
+    } catch (err) {
+      console.error('❌ FCM to user failed:', err.message);
+    }
+  } else {
+    console.log('❌ No FCM token for user:', user.name);
+  }
+
+  // Fetch pandit for FCM to pandit
   const pandit = await prisma.pandit.findUnique({
     where: { id: panditId },
     select: { fcmToken: true, name: true },
   });
 
-  console.log("=================================");
-  console.log("Pandit:", pandit?.name);
-  console.log("FCM Token:", pandit?.fcmToken);
-  console.log("=================================");
-
-  // Send FCM push notification
+  // ✅ Send FCM to PANDIT
   if (pandit?.fcmToken) {
     try {
-      console.log("🔥 Sending FCM Notification...");
-
-      // ✅ Capture the response (was missing before, causing ReferenceError)
-      const fcmResponse = await messaging.send({
+      await messaging.send({
         token: pandit.fcmToken,
         notification: {
           title: "New Consultation Request",
@@ -175,30 +193,24 @@ export async function POST(req) {
         },
         apns: {
           payload: {
-            aps: {
-              sound: "default",
-            },
+            aps: { sound: "default" },
           },
         },
       });
-
-      console.log("✅ FCM Sent:", fcmResponse);
+      console.log('✅ FCM sent to pandit:', pandit.name);
     } catch (err) {
-      // ✅ Non-fatal — log and continue so the call still goes through
-      console.error("❌ FCM Failed:", err?.message || err);
+      console.error("❌ FCM to pandit failed:", err?.message);
     }
-  } else {
-    console.log("❌ No FCM token found for pandit:", pandit?.name);
   }
 
   return NextResponse.json({
-    callId: call.id,
+    callId:          call.id,
     channelName,
     token,
-    appId: process.env.AGORA_APP_ID,
+    appId:           process.env.AGORA_APP_ID,
     uid,
-    isFreeCall: hasFreeCall,
-    freeSeconds: hasFreeCall ? FREE_CALL_SECONDS : 0,
+    isFreeCall:      hasFreeCall,
+    freeSeconds:     hasFreeCall ? FREE_CALL_SECONDS : 0,
     planSecondsLeft: activePlan?.remainingSeconds ?? 0,
   });
 }
