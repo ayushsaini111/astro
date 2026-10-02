@@ -50,36 +50,22 @@ export async function POST(req) {
   // ✅ FCM — works in BOTH foreground and background/killed states
   if (call.user?.fcmToken) {
     try {
-      await messaging.send({
-        token: call.user.fcmToken,
-        data: {
-          type:        'incoming_call',
-          callId:      call.id,
-          channelName: call.channelName,
-          token:       token,
-          appId:       process.env.AGORA_APP_ID,
-          uid:         String(uid),
-          callerName:  pandit.name || 'Expert',
-          panditName:  pandit.name || 'Expert',
-        },
-        notification: {
-          title: '📞 Incoming Call',
-          body:  `${pandit.name || 'Expert'} is calling you now`,
-        },
-        android: {
-          priority: 'high',
-          ttl: 30000,
-          notification: {
-            channelId: 'default',
-            sound:     'default',
-            priority:  'max',
-          },
-        },
-        apns: {
-          payload: { aps: { contentAvailable: true, sound: 'default' } },
-          headers: { 'apns-priority': '10' },
-        },
-      });
+   await messaging.send({
+  token: call.user.fcmToken,
+  data: {
+    type:        'incoming_call',
+    callId:      call.id,
+    channelName: call.channelName,
+    token:       token,
+    appId:       process.env.AGORA_APP_ID,
+    uid:         String(uid),
+    callerName:  pandit.name || 'Expert',
+    panditName:  pandit.name || 'Expert',
+  },
+  // ❌ no notification block
+  android: { priority: 'high', ttl: 30000 },
+  apns: { payload: { aps: { contentAvailable: true } }, headers: { 'apns-priority': '10' } },
+});
       console.log('✅ FCM sent to user:', call.user.username);
     } catch (err) {
       console.error('❌ FCM to user failed:', err.message);
