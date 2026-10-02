@@ -140,7 +140,7 @@
 //     if (isPandit) {
 //       // ✅ Pandit accepted → notify user with "call-ringing"
 //       console.log("📣 Sending call-ringing to user:", `user-${call.userId}`);
-      
+
 //       const userPayload = {
 //         callId: call.id,
 //         channelName: call.channelName,
@@ -150,12 +150,12 @@
 //         pandit: call.pandit,
 //         ...balanceInfo,
 //       };
-      
+
 //       sendEvent(`user-${call.userId}`, "call-ringing", userPayload);
 //     } else {
 //       // ✅ User accepted → notify pandit with "call-accepted"
 //       console.log("📣 Sending call-accepted to pandit:", `pandit-${call.panditId}`);
-      
+
 //       const panditPayload = {
 //         callId: call.id,
 //         channelName: call.channelName,
@@ -164,7 +164,7 @@
 //         appId: process.env.AGORA_APP_ID,
 //         pandit: call.user,
 //       };
-      
+
 //       sendEvent(`pandit-${call.panditId}`, "call-accepted", panditPayload);
 //     }
 
@@ -270,11 +270,11 @@ export async function POST(req) {
     });
 
     const responsePayload = {
-      callId:      call.id,
+      callId: call.id,
       channelName: call.channelName,
       token,
       uid,
-      appId:       process.env.AGORA_APP_ID,
+      appId: process.env.AGORA_APP_ID,
       ...balanceInfo,
     };
 
@@ -284,66 +284,67 @@ export async function POST(req) {
       responsePayload.pandit = call.pandit;
     }
 
-    if (isPandit) {
+       if (isPandit) {
       const userPayload = {
-        callId:      call.id,
+        callId: call.id,
         channelName: call.channelName,
-        token:       generateAgoraToken(call.channelName, Math.floor(Math.random() * 100000)),
-        uid:         Math.floor(Math.random() * 100000),
-        appId:       process.env.AGORA_APP_ID,
-        pandit:      call.pandit,
+        token: generateAgoraToken(call.channelName, Math.floor(Math.random() * 100000)),
+        uid: Math.floor(Math.random() * 100000),
+        appId: process.env.AGORA_APP_ID,
+        pandit: call.pandit,
         ...balanceInfo,
       };
 
       // ✅ SSE — works when app is open (website + app)
       sendEvent(`user-${call.userId}`, "call-ringing", userPayload);
 
-      // ✅ FCM — works when app is killed/background (app only)
-      // Website is NOT affected — it uses SSE above
+      // ✅ FCM — works in BOTH foreground and background/killed states
       if (call.user?.fcmToken) {
         try {
           await messaging.send({
             token: call.user.fcmToken,
-            // ✅ data-only — no notification field
-            // This makes background handler run instead of system notification
             data: {
-              type:        'incoming_call',
-              callId:      call.id,
+              type: 'incoming_call',
+              callId: call.id,
               channelName: call.channelName,
-              token:       userPayload.token,
-              appId:       process.env.AGORA_APP_ID,
-              uid:         String(userPayload.uid),
-              callerName:  call.pandit?.name || 'Expert',
-              panditName:  call.pandit?.name || 'Expert',
+              token: userPayload.token,
+              appId: process.env.AGORA_APP_ID,
+              uid: String(userPayload.uid),
+              callerName: call.pandit?.name || 'Expert',
+              panditName: call.pandit?.name || 'Expert',
+            },
+            notification: {
+              title: '📞 Incoming Call',
+              body: `${call.pandit?.name || 'Expert'} is calling you now`,
             },
             android: {
               priority: 'high',
-              ttl:      30000,
+              ttl: 30000,
+              notification: {
+                channelId: 'default',
+                sound: 'default',
+                priority: 'max',
+              },
             },
             apns: {
-              payload: {
-                aps: { contentAvailable: true },
-              },
-              headers: {
-                'apns-priority': '5',
-              },
+              payload: { aps: { contentAvailable: true, sound: 'default' } },
+              headers: { 'apns-priority': '10' },
             },
           });
           console.log('✅ FCM sent to user:', call.user.name);
         } catch (err) {
-          // ✅ Non-fatal — SSE already sent, call still works
           console.error('❌ FCM to user failed:', err.message);
         }
       }
 
     } else {
       const panditPayload = {
-        callId:      call.id,
+        callId: call.id,
         channelName: call.channelName,
-        token:       generateAgoraToken(call.channelName, Math.floor(Math.random() * 100000)),
-        uid:         Math.floor(Math.random() * 100000),
-        appId:       process.env.AGORA_APP_ID,
-        pandit:      call.user,
+        token: generateAgoraToken(call.channelName, Math.floor(Math.random() * 100000)),
+        uid: Math.floor(Math.random() * 100000),
+        appId: process.env.AGORA_APP_ID,
+        pandit: call.user,
       };
 
       sendEvent(`pandit-${call.panditId}`, "call-accepted", panditPayload);
