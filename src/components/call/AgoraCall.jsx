@@ -266,33 +266,7 @@ export default function AgoraCall({
 // AUTO END WHEN PLAN EXPIRES
 // =========================================================
 
-useEffect(() => {
-  if (!remoteJoined) return;
 
-  const interval = setInterval(async () => {
-    const res = await fetch("/api/plans/status");
-    const data = await res.json();
-
-    const remaining = (data.activePlans ?? []).reduce(
-      (sum, p) => sum + (p.remainingSeconds ?? 0),
-      0
-    );
-
-    if (remaining <= 0) {
-      clearInterval(interval);
-
-      setWarning("no_balance");
-
-      setTimeout(async () => {
-        await handleEnd();
-        router.push("/plans");
-      }, 1000);
-    }
-  }, 1000);
-
-  return () => clearInterval(interval);
-
-}, [remoteJoined]);
   // =========================================================
   // (Removed) BALANCE CHECK POLLING
   // Previously polled /api/plans/status every 30s and ended the call

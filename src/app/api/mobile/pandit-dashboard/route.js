@@ -122,10 +122,12 @@ export async function GET(req) {
 
     const talkTime = `${hours}h ${minutes}m`;
 
-    const resolveUsername = call =>
-      call.user?.username ||
-      call.deletedUsername ||
-      "Deleted User";
+   const resolveUsername = call => {
+  if (call.user?.name) return call.user.name;
+  if (call.deletedUsername) return call.deletedUsername;
+  if (call.user === null) return "Deleted User";
+  return "User";
+};
 
     // -------------------------------
     // Recent Requests (Dashboard)

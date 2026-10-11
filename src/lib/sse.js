@@ -1,6 +1,12 @@
 // backend/src/lib/sse.js
 
-const clients = new Map();
+const globalForSSE = globalThis;
+
+if (!globalForSSE.__sseClients) {
+  globalForSSE.__sseClients = new Map();
+}
+
+const clients = globalForSSE.__sseClients;
 
 export function addClient(clientId, controller) {
   if (!clients.has(clientId)) {

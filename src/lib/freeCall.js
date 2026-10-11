@@ -1,0 +1,1 @@
+export const FREE_CALL_SECONDS = 60;

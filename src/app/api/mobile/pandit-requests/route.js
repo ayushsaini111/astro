@@ -50,7 +50,7 @@ export async function GET(req) {
         user: {
           select: {
             id: true,
-            username: true,
+            name: true,
             dob: true,
           },
         },
@@ -63,7 +63,7 @@ export async function GET(req) {
     const formattedCalls = calls.map(call => ({
       ...call,
       displayUsername:
-        call.user?.username ||
+        call.user?.name ||
         call.deletedUsername ||
         "Deleted User",
     }));

@@ -1,180 +1,95 @@
 // app/api/mobile/accept-call/route.js
-
 import { prisma } from "@/lib/prisma";
 import { generateAgoraToken } from "@/lib/agora";
 import { NextResponse } from "next/server";
 import jwt from "jsonwebtoken";
 import { sendEvent } from "@/lib/sse";
-
-const FREE_CALL_SECONDS = 5;
+import { messaging } from "@/lib/firebaseAdmin";          // ✅ ADD
+import { FREE_CALL_SECONDS } from "@/lib/freeCall";        // ✅ ADD (see below)
 
 export async function POST(req) {
   try {
-    // ------------------------------------
-    // Verify JWT
-    // ------------------------------------
     const auth = req.headers.get("authorization");
-
     if (!auth?.startsWith("Bearer ")) {
-      return NextResponse.json(
-        { error: "Unauthorized" },
-        { status: 401 }
-      );
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
-
     const token = auth.replace("Bearer ", "");
-
     let payload;
+    try { payload = jwt.verify(token, process.env.NEXTAUTH_SECRET); }
+    catch { return NextResponse.json({ error: "Invalid token" }, { status: 401 }); }
 
-    try {
-      payload = jwt.verify(token, process.env.NEXTAUTH_SECRET);
-    } catch {
-      return NextResponse.json(
-        { error: "Invalid token" },
-        { status: 401 }
-      );
-    }
+    const pandit = await prisma.pandit.findUnique({ where: { id: payload.id } });
+    if (!pandit) return NextResponse.json({ error: "Pandit not found" }, { status: 404 });
 
-    // ------------------------------------
-    // Find Pandit
-    // ------------------------------------
-    const pandit = await prisma.pandit.findUnique({
-      where: { id: payload.id },
-    });
-
-    if (!pandit) {
-      return NextResponse.json(
-        { error: "Pandit not found" },
-        { status: 404 }
-      );
-    }
-
-    // ------------------------------------
-    // Get callId from body
-    // ------------------------------------
     const { callId } = await req.json();
+    if (!callId) return NextResponse.json({ error: "Missing callId" }, { status: 400 });
 
-    if (!callId) {
-      return NextResponse.json(
-        { error: "Missing callId" },
-        { status: 400 }
-      );
-    }
-
-    // ------------------------------------
-    // Find Call
-    // ------------------------------------
     const call = await prisma.call.findUnique({
       where: { id: callId },
-      include: {
-        user: {
-          select: {
-            username: true,
-            dob: true,
-          },
-        },
-      },
+      include: { user: { select: { name: true, dob: true, fcmToken: true } } }, // ✅ ADD fcmToken
     });
+    if (!call) return NextResponse.json({ error: "Call not found" }, { status: 404 });
 
-    if (!call) {
-      return NextResponse.json(
-        { error: "Call not found" },
-        { status: 404 }
-      );
+    if (call.status === "ONGOING" || call.status === "COMPLETED") {
+      return NextResponse.json({ error: "Call already accepted" }, { status: 400 });
     }
 
-    // ------------------------------------
-    // Already accepted?
-    // ------------------------------------
-    if (
-      call.status === "ONGOING" ||
-      call.status === "COMPLETED"
-    ) {
-      return NextResponse.json(
-        { error: "Call already accepted" },
-        { status: 400 }
-      );
-    }
-
-    // ------------------------------------
-    // Generate Agora Token
-    // ------------------------------------
     const uid = Math.floor(Math.random() * 100000);
     const agoraToken = generateAgoraToken(call.channelName, uid);
     const now = new Date();
 
-    // ------------------------------------
-    // Update Call status
-    // ------------------------------------
     await prisma.call.update({
       where: { id: call.id },
-      data: {
-        status: "RINGING",
-        agoraToken,
-        startTime: now,
-      },
+      data: { status: "RINGING", agoraToken, startTime: now },
     });
 
-    // ------------------------------------
-    // Fetch user's active plans
-    // ------------------------------------
     const userPlans = await prisma.userPlan.findMany({
-      where: {
-        userId: call.userId,
-        isActive: true,
-        remainingSeconds: { gt: 0 },
-        endDate: { gte: now },
-      },
+      where: { userId: call.userId, isActive: true, remainingSeconds: { gt: 0 }, endDate: { gte: now } },
       orderBy: { endDate: "asc" },
     });
+    const totalPlanSeconds = userPlans.reduce((sum, p) => sum + p.remainingSeconds, 0);
 
-    const totalPlanSeconds = userPlans.reduce(
-      (sum, p) => sum + p.remainingSeconds,
-      0
-    );
+    const freeCallUsage = await prisma.freeCallUsage.findUnique({ where: { userId: call.userId } });
+    const isFreeCall = !freeCallUsage && !!call.isFreeCall && userPlans.length === 0;
 
-    // ------------------------------------
-    // Check free call eligibility
-    // ------------------------------------
-    const freeCallUsage = await prisma.freeCallUsage.findUnique({
-      where: { userId: call.userId },
-    });
-
-    const isFreeCall =
-      !freeCallUsage &&
-      !!call.isFreeCall &&
-      userPlans.length === 0;
-
-    // ------------------------------------
-    // Notify User via SSE
-    // ------------------------------------
-    sendEvent(`user-${call.userId}`, "call-ringing", {
+    const userPayload = {
       callId: call.id,
       channelName: call.channelName,
       token: agoraToken,
       uid,
       appId: process.env.AGORA_APP_ID,
-      pandit: {
-        name: pandit.name,
-        speciality: pandit.speciality,
-        profilePic: pandit.profilePic,
-      },
-    });
+      pandit: { name: pandit.name, speciality: pandit.speciality, profilePic: pandit.profilePic },
+    };
 
-    // ------------------------------------
-    // Log for debugging
-    // ------------------------------------
-    console.log("================================");
-    console.log("MOBILE CALL ACCEPTED");
-    console.log("Pandit:", pandit.id);
-    console.log("Call:", callId);
-    console.log("Total Plan Seconds:", totalPlanSeconds);
-    console.log("Is Free Call:", isFreeCall);
-    console.log("================================");
+    // ✅ SSE — instant if app is foregrounded and SSE is live
+    sendEvent(`user-${call.userId}`, "call-ringing", userPayload);
 
-    // ------------------------------------
-    // Response to Mobile App
-    // ------------------------------------
+    // ✅ FCM — THE FIX. Works even if SSE dropped/reconnecting/backgrounded/killed.
+    if (call.user?.fcmToken) {
+      try {
+        await messaging.send({
+          token: call.user.fcmToken,
+          data: {
+            type: "incoming_call",
+            callId: call.id,
+            channelName: call.channelName,
+            token: agoraToken,
+            appId: process.env.AGORA_APP_ID,
+            uid: String(uid),
+            callerName: pandit.name || "Expert",
+            panditName: pandit.name || "Expert",
+          },
+          android: { priority: "high", ttl: 30000 },
+          apns: { payload: { aps: { contentAvailable: true } }, headers: { "apns-priority": "10" } },
+        });
+        console.log("✅ FCM sent to user on mobile-accept:", call.user.username);
+      } catch (err) {
+        console.error("❌ FCM to user failed (mobile-accept):", err.message);
+      }
+    } else {
+      console.log("❌ No FCM token for user on mobile-accept");
+    }
+
     return NextResponse.json({
       success: true,
       callId: call.id,
@@ -189,13 +104,8 @@ export async function POST(req) {
       walletBalance: null,
       ratePerSecond: null,
     });
-
   } catch (err) {
     console.error("Mobile Accept Call Error:", err);
-
-    return NextResponse.json(
-      { error: "Server error" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Server error" }, { status: 500 });
   }
 }

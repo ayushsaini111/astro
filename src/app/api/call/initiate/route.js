@@ -7,8 +7,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { sendEvent } from "@/lib/sse";
 import { messaging } from "@/lib/firebaseAdmin";
-
-const FREE_CALL_SECONDS = 5;
+import { FREE_CALL_SECONDS } from "@/lib/freeCall"; // ✅ CHANGED — single source of truth, removed local `const FREE_CALL_SECONDS = 5;`
 
 export async function POST(req) {
   const body = await req.json();
@@ -39,7 +38,7 @@ export async function POST(req) {
   const [user, freeUsage, activePlan] = await Promise.all([
     prisma.user.findUnique({
       where: { id: userId },
-      select: { name: true, username: true, dob: true, fcmToken: true }, // ✅ ADD fcmToken
+      select: { name: true, username: true, dob: true, fcmToken: true },
     }),
     prisma.freeCallUsage.findUnique({ where: { userId } }),
     prisma.userPlan.findFirst({

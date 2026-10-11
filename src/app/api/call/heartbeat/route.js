@@ -20,12 +20,9 @@ export async function POST(req) {
     }
 
     // If call ended, return 410 Gone
-    if (call.status === "COMPLETED" || call.status === "FAILED") {
-      return Response.json(
-        { status: "ended", message: "Call has ended" },
-        { status: 410 }
-      );
-    }
+ if (call.status === "COMPLETED" || call.status === "FAILED") {
+  return Response.json({ status: "ended", message: "Call has ended" }); // ✅ default 200
+}
 
     // Return current duration
     const duration = call.startTime

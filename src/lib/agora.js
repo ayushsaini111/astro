@@ -4,7 +4,6 @@ const APP_ID = process.env.AGORA_APP_ID;
 const APP_CERTIFICATE = process.env.AGORA_APP_CERTIFICATE;
 
 export function generateAgoraToken(channelName, uid) {
-  
   const role = RtcRole.PUBLISHER;
   const expireTime = 3600; // 1 hour in seconds
   const currentTime = Math.floor(Date.now() / 1000);
@@ -16,7 +15,8 @@ export function generateAgoraToken(channelName, uid) {
     channelName,
     uid,
     role,
-    privilegeExpireTime
+    privilegeExpireTime,   // tokenExpire
+    privilegeExpireTime    // ✅ ADDED — privilegeExpire (was missing)
   );
 
   return token;
