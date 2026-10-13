@@ -75,3 +75,42 @@ export async function POST(req) {
     );
   }
 }
+
+export async function GET(req) {
+  try {
+    let panditId = null;
+
+    const auth = req.headers.get("authorization");
+    if (auth?.startsWith("Bearer ")) {
+      try {
+        const token = auth.replace("Bearer ", "");
+        const payload = jwt.verify(token, process.env.NEXTAUTH_SECRET);
+        panditId = payload.id;
+      } catch (e) {
+        console.log("JWT auth failed");
+      }
+    }
+
+    if (!panditId) {
+      const session = await getServerSession(authOptions);
+      if (!session?.user?.id || session.user.role !== "pandit") {
+        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      }
+      panditId = session.user.id;
+    }
+
+    const pandit = await prisma.pandit.findUnique({
+      where: { id: panditId },
+      select: { isAvailable: true },
+    });
+
+    if (!pandit) {
+      return NextResponse.json({ error: "Pandit not found" }, { status: 404 });
+    }
+
+    return NextResponse.json({ isAvailable: pandit.isAvailable });
+  } catch (err) {
+    console.error(err);
+    return NextResponse.json({ error: "Server error" }, { status: 500 });
+  }
+}

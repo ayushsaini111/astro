@@ -1,7 +1,7 @@
 import { prisma } from "./prisma";
 import { sendEvent } from "./sse";
 import { FREE_CALL_SECONDS } from "./freeCall";
-
+import { RATE_PER_SECOND } from "./pricing";
 /**
  * Single source of truth for ending + billing a call.
  * Used by BOTH /api/call/end (user app) and /api/mobile/end-call (pandit app).
@@ -30,17 +30,19 @@ export async function endCallAndBill({ callId, endedBy, clientDuration }) {
 
   const actualDuration = safeClientDuration ?? serverDuration;
 
-  // ✅ ATOMIC CLAIM — only one of (user-end, pandit-end, auto-timer-end) wins.
-  const claim = await prisma.call.updateMany({
-    where: { id: callId, status: { notIn: ["COMPLETED", "FAILED"] } },
-    data: {
-      status: "COMPLETED",
-      endTime: now,
-      duration: actualDuration,
-      endedBy,
-      billableSeconds: actualDuration,
-    },
-  });
+const earnedAmount = Math.round(actualDuration * RATE_PER_SECOND * 100) / 100;
+
+const claim = await prisma.call.updateMany({
+  where: { id: callId, status: { notIn: ["COMPLETED", "FAILED"] } },
+  data: {
+    status: "COMPLETED",
+    endTime: now,
+    duration: actualDuration,
+    endedBy,
+    billableSeconds: actualDuration,
+    totalCost: earnedAmount, // ✅ ADD THIS — pandit's earning for this call
+  },
+});
 
   if (claim.count === 0) {
     console.log("⚠️ Duplicate end-call request ignored for:", callId);
