@@ -264,6 +264,14 @@ model Pandit {
   updatedAt                         DateTime  @updatedAt
   fcmToken                          String?
   calls                             Call[]
+  accountHolderName       String?
+  accountNumber     String?
+  ifsc              String?
+  upiId             String?
+  payoutMethod      String?
+  bankDetailsAdded  Boolean  @default(false)
+
+  payoutRequests    PayoutRequest[]  
 }
 
 model CallEvent {
@@ -627,7 +635,30 @@ model PlanetaryTransit {
   @@unique([date, planetName])
   @@index([date, planetName])
 }
+model PayoutRequest {
+  id           String       @id @default(cuid())
+  panditId     String
+  amount       Float
+  status       PayoutStatus @default(PENDING)
+  requestedAt  DateTime     @default(now())
+  processedAt  DateTime?
+  adminNotes   String?
+  // ✅ snapshot bank details at time of request (in case pandit changes them later)
+  accountHolderName String?
+  accountNumber     String?
+  ifsc              String?
+  upiId             String?
+  pandit       Pandit       @relation(fields: [panditId], references: [id])
 
+  @@index([panditId])
+  @@index([status])
+}
+enum PayoutStatus {
+  PENDING
+  PROCESSING
+  PAID
+  REJECTED
+}
 model HoroscopeCache {
   id          String   @id @default(cuid())
   rashi       String
@@ -826,3 +857,4 @@ model WhatsAppMessage {
   @@index([bookingId])
   @@index([receivedAt])
 }
+
