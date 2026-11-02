@@ -12,7 +12,7 @@ import {
 let cronJob = null;
 
 /**
- * Start cron job to send reminders
+ * Start cron job to send remindersss
  */
 export function startReminderCron() {
   if (cronJob) {
