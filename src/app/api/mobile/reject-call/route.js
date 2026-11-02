@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { NextResponse } from "next/server";
 import jwt from "jsonwebtoken";
 import { sendEvent } from "@/lib/sse";
+import { pushToUser } from "@/lib/pushToUser";
 
 export async function POST(req) {
   try {
@@ -30,20 +31,23 @@ export async function POST(req) {
     });
 
     if (!call) return NextResponse.json({ error: "Call not found" }, { status: 404 });
-
     if (call.panditId !== pandit.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
     }
 
-    if (call.status !== "COMPLETED") {
-      await prisma.call.update({
-        where: { id: call.id },
-        data: { status: "FAILED" },
-      });
-    }
-
     sendEvent(`user-${call.userId}`, "call-ended", { callId, status: "FAILED" });
     sendEvent(`pandit-${call.panditId}`, "call-ended", { callId, status: "FAILED" });
+
+    // Await only the DB update — fast, local, and needed before responding.
+    if (call.status !== "COMPLETED") {
+      await prisma.call.update({ where: { id: call.id }, data: { status: "FAILED" } });
+    }
+
+    // Fire-and-forget — don't block the HTTP response on an external push call.
+    if (call.userId) {
+      pushToUser(call.userId, { type: "call_ended", data: { callId: String(callId) } })
+        .catch((e) => console.error("pushToUser failed:", e.message));
+    }
 
     return NextResponse.json({ success: true });
   } catch (err) {

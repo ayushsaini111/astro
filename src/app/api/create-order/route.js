@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
 import Razorpay from "razorpay";
+import { prisma } from "@/lib/prisma";
+import { getActiveRedeemCode, computeDiscount } from "@/lib/redeem"; // ✅ NEW
 
 function getRazorpay() {
   if (!process.env.RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET) {
     throw new Error("Razorpay credentials not found");
   }
-
   return new Razorpay({
     key_id: process.env.RAZORPAY_KEY_ID,
     key_secret: process.env.RAZORPAY_KEY_SECRET,
@@ -14,7 +15,7 @@ function getRazorpay() {
 
 export async function POST(request) {
   try {
-    const { amount, currency, poojaId, poojaTitle } = await request.json();
+    const { amount, currency, poojaId, poojaTitle, redeemCode } = await request.json(); // ✅ redeemCode
 
     if (!amount || !poojaId || !poojaTitle) {
       return NextResponse.json(
@@ -23,21 +24,28 @@ export async function POST(request) {
       );
     }
 
+    // ✅ validate code + compute discount on the amount already sent by client
+    const redeem = await getActiveRedeemCode(redeemCode);
+    const { payableAmount, discountAmount } = computeDiscount(Math.round(amount), redeem?.discountPercent ?? 0);
+
     const razorpay = getRazorpay();
 
     const order = await razorpay.orders.create({
-      amount: Math.round(amount),
+      amount: payableAmount, // ✅ discounted
       currency: currency || "INR",
       receipt: `rcpt_${Date.now()}_${poojaId}`,
       notes: {
         poojaId: poojaId.toString(),
         poojaTitle,
+        redeemCode: redeem?.code || "", // ✅
       },
     });
 
     return NextResponse.json({
       success: true,
       order,
+      discountApplied: discountAmount > 0, // ✅
+      discountAmount,                      // ✅
     });
   } catch (error) {
     console.error("Error creating Razorpay order:", error);

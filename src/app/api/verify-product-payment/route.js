@@ -1,7 +1,7 @@
-// src/app/backend/verify-product-payment/route.js
 import { NextResponse } from "next/server";
 import crypto from "crypto";
 import { prisma } from "@/lib/prisma";
+import { getActiveRedeemCode, computeDiscount, creditCommission } from "@/lib/redeem"; // ✅ NEW
 
 function getUserFromHeaders(request) {
   const userId = request.headers.get('x-user-id');
@@ -24,6 +24,7 @@ export async function POST(request) {
       userDetails,
       deliveryLocation,
       productDetails,
+      redeemCode, // ✅ NEW
     } = body;
 
     // ── Step 1: Verify Razorpay signature ──────────────────────────
@@ -42,6 +43,14 @@ export async function POST(request) {
 
     console.log("✅ Payment signature verified");
 
+    // ✅ Idempotency guard — avoid double-processing on retry
+    const existingOrder = await prisma.order.findUnique({
+      where: { razorpayPaymentId: razorpay_payment_id },
+    });
+    if (existingOrder) {
+      return NextResponse.json({ success: true, alreadyProcessed: true, order: existingOrder });
+    }
+
     // ── Step 2: Generate unique order ID ───────────────────────────
     const orderId = `ORD${Date.now().toString().slice(-10)}`;
 
@@ -49,42 +58,48 @@ export async function POST(request) {
     const estimatedDelivery = new Date();
     estimatedDelivery.setDate(estimatedDelivery.getDate() + 7);
 
+    // ✅ Step 3.5: Recompute discount server-side (never trust client totalPrice blindly)
+    const redeem = await getActiveRedeemCode(redeemCode);
+    const baseAmountPaise = Math.round(parseFloat(productDetails.totalPrice) * 100);
+    const { payableAmount, discountAmount } = computeDiscount(baseAmountPaise, redeem?.discountPercent ?? 0);
+
     // ── Step 4: Prepare order data ─────────────────────────────────
     const orderData = {
       orderId,
       userId: user.id,
-      
+
       // Product details
       productId: productDetails.productId,
       productTitle: productDetails.productTitle,
       productImage: productDetails.productImage || null,
       quantity: parseInt(productDetails.quantity) || 1,
       unitPrice: parseFloat(productDetails.unitPrice) || 0,
-      totalAmount: parseFloat(productDetails.totalPrice) || 0,
-      
+      totalAmount: payableAmount / 100, // ✅ discounted amount actually charged
+      redeemCode: redeem?.code || null, // ✅ NEW
+
       // Customer details
       customerName: userDetails.name || "",
       customerPhone: userDetails.phone || "",
       customerEmail: userDetails.email || "",
-      
+
       // Payment details
       razorpayOrderId: razorpay_order_id,
       razorpayPaymentId: razorpay_payment_id,
       razorpaySignature: razorpay_signature,
       paymentStatus: "SUCCESS",
-      
+
       // Order status
       status: "CONFIRMED",
-      deliveryStatus: "PENDING", // ✅ Changed from CONFIRMED to PENDING
-      
+      deliveryStatus: "PENDING",
+
       // Delivery info
       estimatedDelivery,
       specialRequests: userDetails.specialRequests || null,
-      
-      // Address details - handle both GPS and manual
+
+      // Address details
       addressType: deliveryLocation.type === "coordinates" ? "GPS" : "MANUAL",
-      latitude: deliveryLocation.latitude || null, // ✅ Allow null
-      longitude: deliveryLocation.longitude || null, // ✅ Allow null
+      latitude: deliveryLocation.latitude || null,
+      longitude: deliveryLocation.longitude || null,
       fullAddress: deliveryLocation.fullAddress || "",
       houseNo: userDetails.houseNo || null,
       address: userDetails.address || null,
@@ -97,12 +112,7 @@ export async function POST(request) {
       data: orderData,
       include: {
         user: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-            phone: true,
-          },
+          select: { id: true, name: true, email: true, phone: true },
         },
       },
     });
@@ -127,10 +137,8 @@ export async function POST(request) {
       select: { phone: true, provider: true },
     });
 
-    // Only update if phone is missing (Google login users)
     if (existingUser && (!existingUser.phone || existingUser.provider === "GOOGLE")) {
       const updateData = {};
-      
       if (userDetails.name) updateData.name = userDetails.name;
       if (userDetails.email) updateData.email = userDetails.email;
       if (userDetails.phone) updateData.phone = userDetails.phone;
@@ -140,12 +148,21 @@ export async function POST(request) {
       if (userDetails.pinCode) updateData.pinCode = userDetails.pinCode;
 
       if (Object.keys(updateData).length > 0) {
-        await prisma.user.update({
-          where: { id: user.id },
-          data: updateData,
-        });
+        await prisma.user.update({ where: { id: user.id }, data: updateData });
         console.log("✅ User profile updated");
       }
+    }
+
+    // ✅ Step 7.5: Credit commission to the partner who owns this code
+    if (redeem) {
+      creditCommission({
+        redeemCode: redeem,
+        userId: user.id,
+        orderType: "PRODUCT",
+        orderRefId: order.id,
+        originalAmount: baseAmountPaise / 100,
+        discountAmount: discountAmount / 100,
+      }).catch((e) => console.error("⚠️ Commission credit failed (non-fatal):", e));
     }
 
     // ── Step 8: Return success response ────────────────────────────
@@ -164,15 +181,14 @@ export async function POST(request) {
 
   } catch (error) {
     console.error("❌ Verify product payment error:", error);
-    
-    // Better error handling
+
     if (error.code === 'P2002') {
       return NextResponse.json(
         { success: false, message: "Duplicate order detected" },
         { status: 409 }
       );
     }
-    
+
     if (error.code === 'P2003') {
       return NextResponse.json(
         { success: false, message: "Invalid product or user reference" },

@@ -21,26 +21,28 @@ export async function GET(request) {
     return NextResponse.json({ count: joins.length, joins });
   }
 
-  const user = getUserFromHeaders(request);
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  // ✅ Support both header (x-user-id) and query param (?userId=) since the
+  // RN client currently sends it as a query param — header takes priority
+  // if your other routes rely on it, but we fall back so this never silently 401s.
+  const headerUser = getUserFromHeaders(request);
+  const userId = headerUser?.id || searchParams.get("userId");
 
-  const joined = await prisma.communityJoin.findUnique({
-    where: { userId: user.id },
-    select: { joinedAt: true },
+  if (!userId) {
+    return NextResponse.json({ joined: false, status: null, joinedAt: null, currentEnd: null });
+  }
+
+  const join = await prisma.communityJoin.findUnique({
+    where: { userId },
+    select: { status: true, joinedAt: true, currentEnd: true },
   });
 
-  return NextResponse.json({ joined: !!joined, joinedAt: joined?.joinedAt ?? null });
-}
-
-export async function POST(request) {
-  const user = getUserFromHeaders(request);
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-
-  const record = await prisma.communityJoin.upsert({
-    where: { userId: user.id },
-    update: {},
-    create: { userId: user.id },
+  // ✅ THE FIX — "joined" now means status is genuinely ACTIVE (i.e. payment
+  // was verified and/or a subscription.charged webhook confirmed it),
+  // NOT merely "a row exists in the table"
+  return NextResponse.json({
+    joined: join?.status === "ACTIVE",
+    status: join?.status || null,
+    joinedAt: join?.joinedAt || null,
+    currentEnd: join?.currentEnd || null,
   });
-
-  return NextResponse.json({ joined: true, joinedAt: record.joinedAt });
 }

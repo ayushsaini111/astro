@@ -6,6 +6,86 @@ generator client {
 datasource db {
   provider = "postgresql"
 }
+// ============ ADD THESE NEW MODELS ============
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  type      String   // BOOKING | ORDER | PLAN | RECHARGE_EXPIRY | OFFER | CUSTOM
+  title     String
+  body      String
+  data      Json?
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isRead])
+  @@index([createdAt])
+}
+model Partner {
+  id            String             @id @default(cuid())
+  name          String
+  phone         String?            @unique
+  email         String?            @unique
+  password      String?            // for partner login/dashboard
+  walletBalance Float              @default(0)
+  isActive      Boolean            @default(true)
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+  redeemCodes   RedeemCode[]
+  commissions   CommissionLedger[]
+  payouts       PartnerPayout[]
+
+  @@index([isActive])
+}
+
+model RedeemCode {
+  id                String             @id @default(cuid())
+  code              String             @unique
+  partnerId         String
+  discountPercent   Int                @default(10)
+  commissionPercent Int                @default(10)
+  isActive          Boolean            @default(true)
+  usageCount        Int                @default(0)
+  createdAt         DateTime           @default(now())
+  partner           Partner            @relation(fields: [partnerId], references: [id])
+  commissions       CommissionLedger[]
+
+  @@index([code])
+  @@index([partnerId])
+}
+
+model CommissionLedger {
+  id               String     @id @default(cuid())
+  partnerId        String
+  redeemCodeId     String
+  userId           String?
+  orderType        String     // PLAN | POOJA | PRODUCT | WALLET_RECHARGE
+  orderRefId       String
+  originalAmount   Float
+  discountAmount   Float
+  commissionAmount Float
+  createdAt        DateTime   @default(now())
+  partner          Partner    @relation(fields: [partnerId], references: [id])
+  redeemCode       RedeemCode @relation(fields: [redeemCodeId], references: [id])
+
+  @@unique([orderType, orderRefId])
+  @@index([partnerId])
+  @@index([redeemCodeId])
+}
+
+model PartnerPayout {
+  id          String   @id @default(cuid())
+  partnerId   String
+  amount      Float
+  status      String   @default("PENDING") // PENDING | PAID | REJECTED
+  requestedAt DateTime @default(now())
+  processedAt DateTime?
+  partner     Partner  @relation(fields: [partnerId], references: [id])
+
+  @@index([partnerId])
+}
+
+
 
 model User {
   id                     String            @id @default(cuid())
@@ -44,7 +124,7 @@ model User {
   plans                  UserPlan[]
   wallet                 Wallet?
   communityJoin CommunityJoin?
-
+  notifications Notification[]
   @@index([phone])
   @@index([email])
 }
@@ -53,6 +133,42 @@ model CommunityJoin {
   userId    String   @unique
   joinedAt  DateTime @default(now())
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  razorpaySubscriptionId String?                     @unique
+  razorpayPlanId         String?
+  status                 CommunitySubscriptionStatus @default(PENDING)
+  amount                 Int                         @default(0) // paise
+  currentStart           DateTime?
+  currentEnd             DateTime?
+  lastChargedAt          DateTime?
+  cancelledAt            DateTime?
+  haltedAt               DateTime?
+
+  payments CommunityPayment[]
+
+  @@index([status])
+  @@index([razorpaySubscriptionId])
+}
+
+model CommunityPayment {
+  id                String        @id @default(cuid())
+  communityJoinId   String
+  razorpayPaymentId String        @unique
+  amount            Int
+  status            PaymentStatus
+  createdAt         DateTime      @default(now())
+
+  communityJoin CommunityJoin @relation(fields: [communityJoinId], references: [id], onDelete: Cascade)
+
+  @@index([communityJoinId])
+}
+enum CommunitySubscriptionStatus {
+  PENDING
+  ACTIVE
+  PAST_DUE
+  HALTED
+  CANCELLED
+  COMPLETED
 }
 
 model OTPVerification {
@@ -97,7 +213,7 @@ model Booking {
   razorpaySignature String?
   specialRequests   String?
   panditNotes       String?
-
+  redeemCode                   String?
   // ✅ NEW FIELDS FOR ONLINE POOJAS
   videoLink                   String? // Video link after completion
   certificateUrl              String? // Generated certificate PDF URL
@@ -193,6 +309,8 @@ model Transaction {
   status            PaymentStatus
   razorpayOrderId   String?
   razorpayPaymentId String?
+  redeemCode        String? 
+  
   idempotencyKey    String?       @unique
   createdAt         DateTime      @default(now())
   callBillings      CallBilling[]
@@ -235,6 +353,8 @@ model Call {
   user            User?          @relation(fields: [userId], references: [id])
   billing         CallBilling?
   events          CallEvent[]
+    recording Recording?
+      @@index([panditId, status, createdAt])
 }
 
 model Pandit {
@@ -339,9 +459,11 @@ model UserPlan {
   lastUsedDate      DateTime?
   startDate         DateTime  @default(now())
   endDate           DateTime
+  redeemCode String?
   isActive          Boolean   @default(true)
   plan              Plan      @relation(fields: [planId], references: [id])
   user              User      @relation(fields: [userId], references: [id])
+    expiryNotified Boolean @default(false)
 }
 
 model Product {
@@ -478,7 +600,7 @@ model Order {
   longitude   Float?
   addressType String?
   fullAddress String  @default("")
-
+redeemCode String?
   // Customer Details
   customerName  String @default("")
   customerPhone String @default("") @db.VarChar(10)
@@ -725,6 +847,25 @@ model SystemState {
   updatedAt DateTime
   createdAt DateTime @default(now())
 }
+model Recording {
+  id             String    @id @default(cuid())
+  callId         String    @unique
+  call           Call      @relation(fields: [callId], references: [id])
+
+  resourceId     String
+  sid            String
+  recordingUid   String
+
+  gcsBucket      String
+  fileNamePrefix String       // the Agora "fileNamePrefix" path we gave it
+  fileList       String[]     // actual file names Agora returns on stop()
+
+  status         String    @default("RECORDING") // RECORDING | STOPPED | FAILED
+  startedAt      DateTime  @default(now())
+  stoppedAt      DateTime?
+
+  createdAt      DateTime  @default(now())
+}
 
 model pooja_languages {
   id       Int     @id @default(autoincrement())
@@ -773,7 +914,19 @@ model CalendarAvailability {
   @@index([date])
   @@index([isAvailable])
 }
+model ExpertSearchRequest {
+  id                 String    @id @default(uuid())
+  userId             String?
+  problemCategory    String
+  expertiseType      String
+  problemDescription String?
+  matchedCount       Int       @default(0)
+  viewed             Boolean   @default(false)
+  createdAt          DateTime  @default(now())
 
+  @@index([createdAt])
+  @@index([viewed])
+}
 enum CallStatus {
   INITIATED
   RINGING

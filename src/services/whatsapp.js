@@ -22,7 +22,7 @@ function formatTo12Hour(time24) {
 }
 // Message templates (must exist & be APPROVED in Meta Business, using NAMED variables e.g. {{customer_name}})
 const TEMPLATES = {
-  BOOKING_CONFIRMATION: "booking_confirmation_v1",
+  BOOKING_CONFIRMATION: "booking_confirmation_v2",
   DAY_BEFORE_REMINDER: "day_before_reminder_v1",
   MORNING_REMINDER: "morning_reminder_v1",
   ONE_HOUR_BEFORE: "pooja_reminder_1hr",
@@ -35,7 +35,12 @@ const TEMPLATES = {
  * Core sender — ALL callers must pass parameters as [{ name, value }, ...]
  * This matches Meta's "named parameters" template format.
  */
-export async function sendWhatsAppMessage(phoneNumber, templateName, parameters = []) {
+export async function sendWhatsAppMessage(
+  phoneNumber,
+  templateName,
+  parameters = [],
+  usePositional = false
+) {
   console.log("📱 Sending WhatsApp message...", { phoneNumber, templateName });
 
   try {
@@ -68,11 +73,11 @@ export async function sendWhatsAppMessage(phoneNumber, templateName, parameters 
         components: [
           {
             type: "body",
-            parameters: parameters.map((param) => ({
-              type: "text",
-              parameter_name: param.name,
-              text: String(param.value),
-            })),
+   parameters: parameters.map((param) => ({
+  type: "text",
+  ...(usePositional ? {} : { parameter_name: param.name }),
+  text: String(param.value),
+})),
           },
         ],
       },
@@ -108,14 +113,19 @@ export async function sendWhatsAppMessage(phoneNumber, templateName, parameters 
 // ============================================================================
 
 export async function sendBookingConfirmation(booking) {
-  return sendWhatsAppMessage(booking.customerPhone, "BOOKING_CONFIRMATION", [
-    { name: "customer_name", value: booking.customerName },
-    { name: "pooja_title", value: booking.poojaTitle },
-    { name: "scheduled_date", value: booking.scheduledDate },
-    { name: "scheduled_time", value: booking.scheduledTime || "TBD" },
-    { name: "amount", value: `₹${booking.amount}` },
-    { name: "booking_id", value: booking.id.slice(-8) },
-  ]);
+  return sendWhatsAppMessage(
+    booking.customerPhone,
+    "BOOKING_CONFIRMATION",
+    [
+      { name: "customer_name", value: booking.customerName },
+      { name: "pooja_title", value: booking.poojaTitle },
+      { name: "scheduled_date", value: booking.scheduledDate },
+      { name: "scheduled_time", value: booking.scheduledTime || "TBD" },
+      { name: "amount", value: `₹${booking.amount}` },
+      { name: "booking_id", value: booking.id.slice(-8) },
+    ],
+    true
+  );
 }
 
 export async function sendDayBeforeReminder(booking) {

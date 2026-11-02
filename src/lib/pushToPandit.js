@@ -1,4 +1,3 @@
-// lib/pushToPandit.js
 import { messaging } from "@/lib/firebaseAdmin";
 import { prisma } from "@/lib/prisma";
 
@@ -21,19 +20,29 @@ export async function pushToPandit(panditId, { type, title, body, data = {} }) {
       ])
     );
 
-    await messaging.send({
+    // only these are silent; everything else (incl. incoming_call) is a visible notification
+    const silent = type === "call_ended" || type === "call_connected";
+
+    const message = {
       token: pandit.fcmToken,
-      notification: title ? { title, body } : undefined,
       data: stringData,
-      android: {
-        priority: "high",
-        notification: { channelId: "default", sound: "default" },
-      },
+      android: silent
+        ? { priority: "high", ttl: 30000 }
+        : {
+            priority: "high",
+            ttl: 30000,
+            notification: { channelId: "default", sound: "default", priority: "max", defaultVibrateTimings: true },
+          },
       apns: {
-        payload: { aps: { sound: "default", "content-available": 1 } },
+        payload: { aps: silent ? { contentAvailable: true } : { sound: "default", contentAvailable: true } },
+        headers: { "apns-priority": "10" },
       },
-    });
+    };
+    if (!silent && title) message.notification = { title, body };
+
+    await messaging.send(message);
+    console.log(`✅ push ${type} sent to pandit ${panditId}`);
   } catch (err) {
-    console.error("pushToPandit failed:", err?.message);
+    console.error("pushToPandit failed:", err?.message, err?.code);
   }
 }

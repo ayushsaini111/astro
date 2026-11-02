@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import Razorpay from "razorpay";
 import crypto from "crypto";
 import { prisma } from "@/lib/prisma";
-
+import { getActiveRedeemCode, computeDiscount, creditCommission } from "@/lib/redeem";
+import { sendNotification } from "@/lib/notifications/send";
 const razorpay = new Razorpay({
   key_id: process.env.RAZORPAY_KEY_ID,
   key_secret: process.env.RAZORPAY_KEY_SECRET,
@@ -12,6 +13,10 @@ function getUserFromHeaders(request) {
   const userId = request.headers.get('x-user-id');
   if (!userId) return null;
   return { id: userId };
+}
+
+function sumItemsPaise(items) {
+  return items.reduce((sum, item) => sum + Math.round(parseFloat(item.itemTotal) * 100), 0);
 }
 
 // ✅ CREATE BULK ORDER
@@ -30,22 +35,26 @@ export async function POST(request) {
     }
 
     const body = await request.json();
-    const { amount, currency, items } = body;
+    const { currency, items, redeemCode } = body;
 
-    if (!amount || !items || items.length === 0) {
+    if (!items || items.length === 0) {
       return NextResponse.json(
         { success: false, error: "Missing required fields" },
         { status: 400 }
       );
     }
 
-    // ✅ FIX: Shorten receipt to under 56 chars
+    // ✅ Never trust client-sent `amount` for the actual charge — recompute from items + redeem code
+    const rawTotalPaise = sumItemsPaise(items);
+    const redeem = await getActiveRedeemCode(redeemCode);
+    const { payableAmount } = computeDiscount(rawTotalPaise, redeem?.discountPercent ?? 0);
+
     const timestamp = Date.now();
     const shortUserId = user.id.substring(0, 8);
-    const receipt = `BULK_${timestamp}_${shortUserId}`; // Max ~30 chars
+    const receipt = `BULK_${timestamp}_${shortUserId}`;
 
     const order = await razorpay.orders.create({
-      amount: parseInt(amount),
+      amount: payableAmount,
       currency: currency || "INR",
       receipt,
       notes: {
@@ -53,6 +62,7 @@ export async function POST(request) {
         itemCount: items.length.toString(),
         type: "BULK_ORDER",
         source: "APP",
+        redeemCode: redeem?.code || "NONE",
       },
     });
 
@@ -60,6 +70,7 @@ export async function POST(request) {
       orderId: order.id,
       amount: order.amount / 100,
       itemCount: items.length,
+      redeemApplied: !!redeem,
     });
 
     return NextResponse.json({
@@ -96,6 +107,7 @@ async function handleVerify(request) {
       userDetails,
       deliveryLocation,
       items,
+      redeemCode,
     } = body;
 
     // Verify signature
@@ -114,16 +126,51 @@ async function handleVerify(request) {
 
     console.log("✅ [APP] Payment signature verified");
 
+    // ✅ Idempotency guard — avoid double orders / double commission on retry
+    const existingBatch = await prisma.order.findMany({
+      where: { razorpayPaymentId: razorpay_payment_id },
+    });
+    if (existingBatch.length > 0) {
+      return NextResponse.json({
+        success: true,
+        alreadyProcessed: true,
+        orders: existingBatch.map((o) => ({
+          orderId: o.orderId,
+          productTitle: o.productTitle,
+          productImage: o.productImage,
+          quantity: o.quantity,
+          unitPrice: o.unitPrice,
+          totalPrice: o.totalAmount,
+          shuddhikaranRequested: o.shuddhikaranRequested,
+          shuddhikaranAmount: o.shuddhikaranAmount,
+          deliveryStatus: o.deliveryStatus,
+          estimatedDelivery: o.estimatedDelivery,
+        })),
+        orderIds: existingBatch.map((o) => o.orderId),
+      });
+    }
+
+    // ✅ Recompute discount server-side on the combined cart total (never trust client)
+    const rawTotalPaise = sumItemsPaise(items);
+    const redeem = await getActiveRedeemCode(redeemCode);
+    const { discountAmount } = computeDiscount(rawTotalPaise, redeem?.discountPercent ?? 0);
+    const discountRatio = rawTotalPaise > 0 ? discountAmount / rawTotalPaise : 0;
+
     const estimatedDelivery = new Date();
     estimatedDelivery.setDate(estimatedDelivery.getDate() + 7);
 
-    // Create all orders in transaction
+    // Create all orders in transaction — discount applied proportionally per item
+    // so sum(totalAmount) across orders matches the actual amount charged via Razorpay
     const createdOrders = await prisma.$transaction(async (tx) => {
       const orders = [];
 
       for (const item of items) {
         const orderId = `ORD${Date.now()}${Math.random().toString(36).substr(2, 6).toUpperCase()}`;
         await new Promise(resolve => setTimeout(resolve, 1));
+
+        const itemPaise = Math.round(parseFloat(item.itemTotal) * 100);
+        const itemDiscountPaise = Math.round(itemPaise * discountRatio);
+        const itemPayablePaise = itemPaise - itemDiscountPaise;
 
         const orderData = {
           orderId,
@@ -133,7 +180,8 @@ async function handleVerify(request) {
           productImage: item.productImage || null,
           quantity: parseInt(item.quantity) || 1,
           unitPrice: parseFloat(item.unitPrice) || 0,
-          totalAmount: parseFloat(item.itemTotal) || 0,
+          totalAmount: itemPayablePaise / 100,
+          redeemCode: redeem?.code || null,
           shuddhikaranRequested: item.shuddhikaranRequested || false,
           shuddhikaranAmount: parseFloat(item.shuddhikaranAmount || 0),
           customerName: userDetails.name || "",
@@ -196,6 +244,25 @@ async function handleVerify(request) {
         console.log("✅ [APP] User profile updated");
       }
     }
+
+    // ✅ Credit commission ONCE for the whole combined cart order (not per item)
+    if (redeem) {
+      creditCommission({
+        redeemCode: redeem,
+        userId: user.id,
+        orderType: "PRODUCT",
+        orderRefId: createdOrders[0].id,
+        originalAmount: rawTotalPaise / 100,
+        discountAmount: discountAmount / 100,
+      }).catch((e) => console.error("⚠️ Commission credit failed (non-fatal):", e));
+    }
+        sendNotification({
+      userId: user.id,
+      type: "ORDER",
+      title: "✅ Order Placed",
+      body: `Your order for ${createdOrders.length} item${createdOrders.length > 1 ? "s" : ""} has been confirmed.`,
+      data: { orderIds: createdOrders.map((o) => o.orderId).join(",") },
+    }).catch((e) => console.error("⚠️ Notification send failed (non-fatal):", e));
 
     return NextResponse.json({
       success: true,

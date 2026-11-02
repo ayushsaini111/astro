@@ -1,6 +1,6 @@
-// src/app/backend/create-product-order/route.js
 import { NextResponse } from "next/server";
 import Razorpay from "razorpay";
+import { getActiveRedeemCode, computeDiscount } from "@/lib/redeem"; // ✅ NEW
 
 const razorpay = new Razorpay({
   key_id: process.env.RAZORPAY_KEY_ID,
@@ -28,7 +28,8 @@ export async function POST(request) {
       productTitle,
       productImage,
       quantity,
-      unitPrice
+      unitPrice,
+      redeemCode, // ✅ NEW
     } = body;
 
     if (!amount || !productId || !productTitle) {
@@ -38,8 +39,12 @@ export async function POST(request) {
       );
     }
 
+    // ✅ validate code + apply discount on the amount passed from client
+    const redeem = await getActiveRedeemCode(redeemCode);
+    const { payableAmount, discountAmount } = computeDiscount(parseInt(amount), redeem?.discountPercent ?? 0);
+
     const order = await razorpay.orders.create({
-      amount: parseInt(amount), // amount in paise
+      amount: payableAmount, // ✅ discounted amount
       currency: currency || "INR",
       receipt: `PROD_${Date.now()}_${productId}`,
       notes: {
@@ -49,6 +54,7 @@ export async function POST(request) {
         quantity: (quantity || 1).toString(),
         unitPrice: (unitPrice || 0).toString(),
         userId: user.id,
+        redeemCode: redeem?.code || "", // ✅
       },
     });
 
@@ -61,6 +67,8 @@ export async function POST(request) {
         amount: order.amount,
         currency: order.currency,
       },
+      discountApplied: discountAmount > 0, // ✅
+      discountAmount,                      // ✅
     });
   } catch (error) {
     console.error("❌ Create product order error:", error);

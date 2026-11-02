@@ -50,10 +50,10 @@ export async function POST(req) {
   // ✅ FCM — works in BOTH foreground and background/killed states
   if (call.user?.fcmToken) {
     try {
-   await messaging.send({
+await messaging.send({
   token: call.user.fcmToken,
   data: {
-    type:        'incoming_call',
+    type:        'call_connected',   // ✅ CHANGED
     callId:      call.id,
     channelName: call.channelName,
     token:       token,
@@ -62,7 +62,6 @@ export async function POST(req) {
     callerName:  pandit.name || 'Expert',
     panditName:  pandit.name || 'Expert',
   },
-  // ❌ no notification block
   android: { priority: 'high', ttl: 30000 },
   apns: { payload: { aps: { contentAvailable: true } }, headers: { 'apns-priority': '10' } },
 });

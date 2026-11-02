@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import Razorpay from "razorpay";
 import crypto from "crypto";
 import { prisma } from "@/lib/prisma";
-
+import { sendNotification } from "@/lib/notifications/send";
 const razorpay = new Razorpay({
   key_id: process.env.RAZORPAY_KEY_ID,
   key_secret: process.env.RAZORPAY_KEY_SECRET,
@@ -198,6 +198,14 @@ async function handleVerify(request) {
         console.log("✅ [APP] User profile updated");
       }
     }
+
+        sendNotification({
+      userId: user.id,
+      type: "ORDER",
+      title: "✅ Order Placed",
+      body: `Your order for "${order.productTitle}" has been confirmed.`,
+      data: { orderId: order.orderId },
+    }).catch((e) => console.error("⚠️ Notification send failed (non-fatal):", e));
 
     return NextResponse.json({
       success: true,

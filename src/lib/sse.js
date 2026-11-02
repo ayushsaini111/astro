@@ -1,5 +1,4 @@
 // backend/src/lib/sse.js
-
 const globalForSSE = globalThis;
 
 if (!globalForSSE.__sseClients) {
@@ -13,7 +12,7 @@ export function addClient(clientId, controller) {
     clients.set(clientId, new Set());
   }
   clients.get(clientId).add(controller);
-  console.log(`✅ Client added: ${clientId} (total: ${clients.get(clientId).size})`);
+  console.log(`Client added: ${clientId} (total: ${clients.get(clientId).size})`);
 }
 
 export function removeClient(clientId, controller) {
@@ -22,39 +21,31 @@ export function removeClient(clientId, controller) {
     clientSet.delete(controller);
     if (clientSet.size === 0) {
       clients.delete(clientId);
-      console.log(`🗑️ Client removed: ${clientId}`);
+      console.log(`Client removed: ${clientId}`);
     }
   }
 }
 
 export function sendEvent(clientId, event, data) {
   const clientSet = clients.get(clientId);
-  
-  console.log(`📤 sendEvent called:`, {
-    clientId,
-    event,
-    hasClients: !!clientSet,
-    clientCount: clientSet?.size || 0,
-  });
 
   if (!clientSet || clientSet.size === 0) {
-    console.warn(`⚠️ No clients connected for: ${clientId}`);
+    console.warn(`No clients connected for: ${clientId}`);
     return false;
   }
 
   const message = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
-  
+
   let sentCount = 0;
   clientSet.forEach((controller) => {
     try {
       controller.enqueue(message);
       sentCount++;
     } catch (err) {
-      console.error(`❌ Failed to send to ${clientId}:`, err);
       clientSet.delete(controller);
     }
   });
 
-  console.log(`✅ Event sent to ${sentCount}/${clientSet.size} clients`);
+  console.log(`sendEvent ${clientId} ${event}: sent to ${sentCount}/${clientSet.size}`);
   return sentCount > 0;
 }
