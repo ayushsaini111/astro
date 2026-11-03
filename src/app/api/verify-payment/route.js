@@ -113,12 +113,13 @@ export async function POST(request) {
       });
     }
 
-    try {
-      await sendBookingConfirmation(booking);
-      console.log("✅ WhatsApp confirmation sent");
-    } catch (e) {
-      console.error("⚠️ WhatsApp confirmation failed (non-fatal):", e.message);
-    }
+try {
+  const wa = await sendBookingConfirmation(booking);
+  if (wa.success) console.log("WhatsApp confirmation sent");
+  else console.error("WhatsApp confirmation failed (non-fatal):", wa.error);
+} catch (e) {
+  console.error("WhatsApp confirmation failed (non-fatal):", e.message);
+}
 
     try {
       await createReminders(

@@ -1,7 +1,8 @@
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { createReminders } from "@/services/reminders";
 import { sendBookingConfirmation } from "@/services/whatsapp";
+import { sendNotification } from "@/lib/notifications/send";
 
 function getPoojaType(mode) {
   if (!mode) return "OFFLINE";
@@ -28,7 +29,7 @@ export async function POST(request) {
     const body = await request.json();
     const { orderType, redeemCode } = body;
 
-    // ✅ Hard rule, enforced server-side: wallet payment + redeem code can never combine
+    // Hard rule, enforced server-side: wallet payment + redeem code can never combine
     if (redeemCode) {
       return NextResponse.json(
         { success: false, error: "Redeem codes cannot be used with wallet payment" },
@@ -41,6 +42,7 @@ export async function POST(request) {
     }
 
     let amount, purpose, buildRecord;
+    let planInfo = null;
 
     if (orderType === "POOJA") {
       const { userDetails, pooja, selectedDate, selectedTimeSlot } = body;
@@ -120,7 +122,7 @@ export async function POST(request) {
         return order;
       };
     } else if (orderType === "CART") {
-      // ✅ NEW — multi-item single-payment wallet debit for Cart checkout
+      // Multi-item single-payment wallet debit for Cart checkout
       const { userDetails, deliveryLocation, items } = body;
       if (!Array.isArray(items) || items.length === 0) {
         return NextResponse.json({ success: false, error: "Cart is empty" }, { status: 400 });
@@ -191,6 +193,7 @@ export async function POST(request) {
       if (!plan) {
         return NextResponse.json({ success: false, error: "Plan not found" }, { status: 404 });
       }
+      planInfo = plan;
       amount = plan.price / 100; // plan.price stored in paise
       purpose = "PLAN_PAYMENT";
       buildRecord = async (tx) => {
@@ -221,7 +224,7 @@ export async function POST(request) {
     const idempotencyKey = `wallet_${orderType}_${userId}_${Date.now()}`;
 
     const result = await prisma.$transaction(async (tx) => {
-      // ✅ Atomic conditional debit — DB-level race protection, no separate read-then-write
+      // Atomic conditional debit: DB-level race protection, no separate read-then-write
       const debited = await tx.wallet.updateMany({
         where: { userId, balance: { gte: amount } },
         data: { balance: { decrement: amount } },
@@ -248,14 +251,79 @@ export async function POST(request) {
       return { wallet, transaction, record };
     });
 
-    if (orderType === "POOJA") {
-      sendBookingConfirmation(result.record).catch((e) =>
-        console.error("⚠️ WhatsApp confirmation failed (non-fatal):", e.message)
-      );
-      createReminders(result.record.id, result.record.scheduledDate, result.record.scheduledTime).catch((e) =>
-        console.error("⚠️ Reminder scheduling failed (non-fatal):", e)
-      );
-    }
+    // Runs after the response is sent, but Vercel keeps the function alive until it finishes.
+    after(async () => {
+      const run = async (label, fn) => {
+        try {
+          await fn();
+        } catch (e) {
+          console.error(`${label} failed (non-fatal):`, e?.message || e);
+        }
+      };
+
+      if (orderType === "POOJA") {
+        const b = result.record;
+
+        await run("Push BOOKING", () =>
+          sendNotification({
+            userId,
+            type: "BOOKING",
+            title: "Booking Confirmed",
+            body: `Your booking for "${b.poojaTitle}" on ${b.scheduledDate} has been confirmed.`,
+            data: { bookingId: b.bookingId },
+          })
+        );
+
+        await run("WhatsApp confirmation", async () => {
+          const wa = await sendBookingConfirmation(b);
+          if (!wa.success) throw new Error(wa.error);
+        });
+
+        await run("Reminders", () => createReminders(b.id, b.scheduledDate, b.scheduledTime));
+      }
+
+      if (orderType === "PRODUCT") {
+        const o = result.record;
+        await run("Push ORDER", () =>
+          sendNotification({
+            userId,
+            type: "ORDER",
+            title: "Order Confirmed",
+            body: `Your order for "${o.productTitle}" has been placed. Estimated delivery in 7 days.`,
+            data: { orderId: o.orderId },
+          })
+        );
+      }
+
+      if (orderType === "CART") {
+        const orders = result.record;
+        const first = orders[0];
+        const more = orders.length > 1 ? ` and ${orders.length - 1} more` : "";
+        await run("Push ORDER", () =>
+          sendNotification({
+            userId,
+            type: "ORDER",
+            title: "Order Confirmed",
+            body: `Your order for "${first.productTitle}"${more} has been placed. Estimated delivery in 7 days.`,
+            data: { orderId: first.orderId },
+          })
+        );
+      }
+
+      if (orderType === "PLAN" && planInfo) {
+        const mins = Math.floor((planInfo.seconds || 0) / 60);
+        const name = planInfo.name || planInfo.title || "Plan";
+        await run("Push PLAN", () =>
+          sendNotification({
+            userId,
+            type: "PLAN",
+            title: "Plan Activated",
+            body: `${name} is active. You have ${mins} minutes of call time, valid for ${planInfo.validDays} days.`,
+            data: { planId: String(planInfo.id) },
+          })
+        );
+      }
+    });
 
     return NextResponse.json({
       success: true,
@@ -267,7 +335,7 @@ export async function POST(request) {
     if (error.message === "INSUFFICIENT_BALANCE") {
       return NextResponse.json({ success: false, error: "Insufficient wallet balance" }, { status: 400 });
     }
-    console.error("💥 Wallet payment error:", error);
+    console.error("Wallet payment error:", error);
     return NextResponse.json({ success: false, error: error.message || "Wallet payment failed" }, { status: 500 });
   }
 }

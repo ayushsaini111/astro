@@ -95,7 +95,9 @@ export async function sendWhatsAppMessage(
     const data = await response.json();
 
     if (!response.ok) {
-      const errorMessage = data.error?.message || "Unknown error";
+const errorMessage =
+  [data.error?.message, data.error?.error_data?.details].filter(Boolean).join(" - ") ||
+  "Unknown error";
       console.error("❌ WhatsApp API error:", errorMessage);
       throw new Error(`WhatsApp API error: ${errorMessage}`);
     }
@@ -113,19 +115,14 @@ export async function sendWhatsAppMessage(
 // ============================================================================
 
 export async function sendBookingConfirmation(booking) {
-  return sendWhatsAppMessage(
-    booking.customerPhone,
-    "BOOKING_CONFIRMATION",
-    [
-      { name: "customer_name", value: booking.customerName },
-      { name: "pooja_title", value: booking.poojaTitle },
-      { name: "scheduled_date", value: booking.scheduledDate },
-      { name: "scheduled_time", value: booking.scheduledTime || "TBD" },
-      { name: "amount", value: `₹${booking.amount}` },
-      { name: "booking_id", value: booking.id.slice(-8) },
-    ],
-    true
-  );
+  return sendWhatsAppMessage(booking.customerPhone, "BOOKING_CONFIRMATION", [
+    { name: "customer_name", value: booking.customerName },
+    { name: "pooja_title", value: booking.poojaTitle },
+    { name: "scheduled_date", value: booking.scheduledDate },
+    { name: "scheduled_time", value: formatTo12Hour(booking.scheduledTime) },
+    { name: "amount", value: `₹${booking.amount}` },
+    { name: "booking_id", value: booking.bookingId || booking.id.slice(-8) },
+  ]);
 }
 
 export async function sendDayBeforeReminder(booking) {
