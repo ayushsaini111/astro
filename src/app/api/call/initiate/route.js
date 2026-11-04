@@ -133,25 +133,38 @@ export async function POST(req) {
 
   // Start the push immediately, with the same data-only payload as before.
   // Not awaited: the response returns now, and after() keeps the function alive.
-  const pushP = pandit?.fcmToken
-    ? messaging
-        .send({
-          token: pandit.fcmToken,
-          data: {
-            type: "incoming_call",
-            callId: String(call.id),
-            callerName: String(user.name || "User"),
-            panditName: String(user.name || "User"),
+const pushP = pandit?.fcmToken
+  ? messaging
+      .send({
+        token: pandit.fcmToken,
+        notification: {
+          title: "New Consultation Request",
+          body: `${user.name || "A user"} wants to consult you.`,
+        },
+        data: {
+          type: "incoming_call",
+          callId: String(call.id),
+          callerName: String(user.name || "User"),
+          panditName: String(user.name || "User"),
+        },
+        android: {
+          priority: "high",
+          ttl: 30000,
+          notification: {
+            channelId: "default",
+            sound: "default",
+            priority: "max",
+            defaultVibrateTimings: true,
           },
-          android: { priority: "high", ttl: 30000 },
-          apns: {
-            payload: { aps: { contentAvailable: true, sound: "default" } },
-            headers: { "apns-priority": "10" },
-          },
-        })
-        .then(() => console.log("FCM sent to pandit:", pandit.name))
-        .catch((err) => console.error("FCM to pandit failed:", err?.message))
-    : Promise.resolve();
+        },
+        apns: {
+          payload: { aps: { contentAvailable: true, sound: "default" } },
+          headers: { "apns-priority": "10" },
+        },
+      })
+      .then(() => console.log("FCM sent to pandit:", pandit.name))
+      .catch((err) => console.error("FCM to pandit failed:", err?.message))
+  : Promise.resolve();
 
   sendEvent(`pandit-${panditId}`, "incoming-call", {
     callId: call.id,

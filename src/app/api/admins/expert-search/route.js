@@ -23,8 +23,29 @@ export async function GET(request) {
       prisma.expertSearchRequest.count({ where: { viewed: false } }),
     ]);
 
+    // One query for all users on this page (no N+1)
+    const userIds = [...new Set(requests.map((r) => r.userId).filter(Boolean))];
+    const users = userIds.length
+      ? await prisma.user.findMany({
+          where: { id: { in: userIds } },
+          select: {
+            id: true,
+            name: true,
+            username: true,
+            phone: true,
+            email: true,
+          },
+        })
+      : [];
+    const userMap = new Map(users.map((u) => [u.id, u]));
+
+    const requestsWithUser = requests.map((r) => ({
+      ...r,
+      user: r.userId ? userMap.get(r.userId) || null : null,
+    }));
+
     return NextResponse.json({
-      requests,
+      requests: requestsWithUser,
       pagination: {
         page,
         limit,
@@ -34,7 +55,7 @@ export async function GET(request) {
       unviewedCount,
     });
   } catch (err) {
-    console.error("💥 admins/expert-search GET error:", err);
+    console.error("admins/expert-search GET error:", err);
     return NextResponse.json({ error: "Failed to fetch expert search requests" }, { status: 500 });
   }
 }
@@ -54,7 +75,7 @@ export async function PATCH(request) {
 
     return NextResponse.json({ success: true, request: updated });
   } catch (err) {
-    console.error("💥 admins/expert-search PATCH error:", err);
+    console.error("admins/expert-search PATCH error:", err);
     return NextResponse.json({ error: "Failed to update request" }, { status: 500 });
   }
 }
